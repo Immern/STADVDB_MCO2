@@ -11,6 +11,5 @@
  6. make sure ur in the repo folder, "ls"
  7. run app.py
     python3 app.py
- 8. go to chrome, type in "http://ccscloud.dlsu.edu.ph:<external node port>"
-    external node port = In the port forwarding column of the excel, each node server has 3 rows, copy the external port in the "HTTP from-" section
+ 8. go to chrome, copy paste link in column d "external access" for the node ur on. It's the first row, starts with https://
  9. The index file should apppear
