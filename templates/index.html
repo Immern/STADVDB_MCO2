@@ -2,10 +2,529 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>DDBMS Project</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Distributed Database - Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            margin-bottom: 30px;
+            color: #333;
+        }
+
+        /* Settings Section */
+        .settings-section {
+            display: flex;
+            gap: 20px;
+            align-items: flex-end;
+            margin-bottom: 40px;
+            padding: 20px;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .form-group label {
+            font-weight: bold;
+            font-size: 14px;
+            color: #555;
+        }
+
+        select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            min-width: 200px;
+        }
+
+        button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        /* Node Status Grid */
+        .nodes-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .node-card {
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .node-card:hover {
+            border-color: #007bff;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        .node-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .node-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .status-indicator {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .status-online {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .status-offline {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        .node-info {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .info-label {
+            font-weight: bold;
+        }
+
+        /* Node View Styles */
+        .node-view {
+            display: none;
+        }
+
+        .node-view.active {
+            display: block;
+        }
+
+        .view-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .back-button {
+            background-color: #6c757d;
+            margin-right: 10px;
+        }
+
+        .back-button:hover {
+            background-color: #5a6268;
+        }
+
+        .search-insert-section {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .search-bar {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .insert-button {
+            background-color: #28a745;
+        }
+
+        .insert-button:hover {
+            background-color: #218838;
+        }
+
+        /* Table Styles */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        .data-table th,
+        .data-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .data-table th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .data-table tr:hover {
+            background-color: #f5f5f5;
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            z-index: 1000;
+        }
+
+        .modal.active {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 500px;
+        }
+
+        .modal-header {
+            margin-bottom: 20px;
+        }
+
+        .modal-header h2 {
+            color: #333;
+        }
+
+        .modal-body {
+            margin-bottom: 20px;
+        }
+
+        .modal-body .form-group {
+            margin-bottom: 15px;
+        }
+
+        .modal-body input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .modal-footer {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .cancel-button {
+            background-color: #6c757d;
+        }
+
+        .cancel-button:hover {
+            background-color: #5a6268;
+        }
+    </style>
 </head>
 <body>
-    <h1>Hello World from Flask!</h1>
-    <p>This is the starting point for your web application UI.</p>
+    <!-- Dashboard View -->
+    <div id="dashboard-view" class="container">
+        <h1>Distributed Database Dashboard</h1>
+
+        <!-- Settings Section -->
+        <div class="settings-section">
+            <div class="form-group">
+                <label for="isolation-level">Isolation Level</label>
+                <select id="isolation-level">
+                    <option value="read-uncommitted">Read Uncommitted</option>
+                    <option value="read-committed">Read Committed</option>
+                    <option value="repeatable-read">Repeatable Read</option>
+                    <option value="serializable">Serializable</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="failure-simulation">Failure Simulation</label>
+                <select id="failure-simulation">
+                    <option value="none">None</option>
+                    <option value="crash-node1-write">Crash Node 1 during write</option>
+                    <option value="crash-node23-write">Crash Node 2/3 during write</option>
+                    <option value="central-offline">Central Node offline</option>
+                    <option value="regional-offline">Regional Node offline</option>
+                </select>
+            </div>
+
+            <button onclick="applySettings()">Apply Settings</button>
+        </div>
+
+        <!-- Nodes Grid -->
+        <div class="nodes-grid">
+            <div class="node-card" onclick="navigateToNode(1)">
+                <div class="node-header">
+                    <div class="node-title">Node 1 (Central)</div>
+                    <span class="status-indicator status-online" id="node1-status">ONLINE</span>
+                </div>
+                <div class="node-info">
+                    <div class="info-row">
+                        <span class="info-label">Last Update:</span>
+                        <span id="node1-update">2025-11-24 10:30:00</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Rows:</span>
+                        <span id="node1-rows">1000</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="node-card" onclick="navigateToNode(2)">
+                <div class="node-header">
+                    <div class="node-title">Node 2 (Regional)</div>
+                    <span class="status-indicator status-online" id="node2-status">ONLINE</span>
+                </div>
+                <div class="node-info">
+                    <div class="info-row">
+                        <span class="info-label">Last Update:</span>
+                        <span id="node2-update">2025-11-24 10:29:45</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Rows:</span>
+                        <span id="node2-rows">450</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="node-card" onclick="navigateToNode(3)">
+                <div class="node-header">
+                    <div class="node-title">Node 3 (Regional)</div>
+                    <span class="status-indicator status-online" id="node3-status">ONLINE</span>
+                </div>
+                <div class="node-info">
+                    <div class="info-row">
+                        <span class="info-label">Last Update:</span>
+                        <span id="node3-update">2025-11-24 10:29:50</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Rows:</span>
+                        <span id="node3-rows">550</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Node View Template -->
+    <div id="node-view" class="container node-view">
+        <div class="view-header">
+            <div>
+                <button class="back-button" onclick="navigateToDashboard()">← Back</button>
+                <span style="font-size: 24px; font-weight: bold;" id="current-node-title">Node 1</span>
+            </div>
+        </div>
+
+        <div class="search-insert-section">
+            <input type="text" class="search-bar" id="search-bar" placeholder="Search data..." onkeyup="filterTable()">
+            <button class="insert-button" onclick="openInsertModal()">+ Insert</button>
+        </div>
+
+        <table class="data-table" id="data-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Title Name</th>
+                    <th>Title Region</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="table-body">
+                <!-- Sample data - replace with actual data -->
+                <tr>
+                    <td>1</td>
+                    <td>Sample Title 1</td>
+                    <td>US</td>
+                    <td><button onclick="editRow(1)">Edit</button></td>
+                </tr>
+                <tr>
+                    <td>2</td>
+                    <td>Sample Title 2</td>
+                    <td>UK</td>
+                    <td><button onclick="editRow(2)">Edit</button></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Insert Modal -->
+    <div id="insert-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Insert New Record</h2>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="title-name">Title Name</label>
+                    <input type="text" id="title-name" placeholder="Enter title name">
+                </div>
+                <div class="form-group">
+                    <label for="title-region">Title Region</label>
+                    <input type="text" id="title-region" placeholder="Enter title region">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="cancel-button" onclick="closeInsertModal()">Cancel</button>
+                <button onclick="submitInsert()">Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentNode = null;
+
+        function navigateToNode(nodeNumber) {
+            currentNode = nodeNumber;
+            document.getElementById('dashboard-view').style.display = 'none';
+            document.getElementById('node-view').classList.add('active');
+            document.getElementById('current-node-title').textContent = 
+                nodeNumber === 1 ? 'Node 1 (Central)' : `Node ${nodeNumber} (Regional)`;
+            
+            // Load data for the selected node
+            loadNodeData(nodeNumber);
+        }
+
+        function navigateToDashboard() {
+            document.getElementById('node-view').classList.remove('active');
+            document.getElementById('dashboard-view').style.display = 'block';
+            currentNode = null;
+        }
+
+        function loadNodeData(nodeNumber) {
+            // TODO: Fetch actual data from backend
+            console.log('Loading data for node:', nodeNumber);
+        }
+
+        function applySettings() {
+            const isolationLevel = document.getElementById('isolation-level').value;
+            const failureSimulation = document.getElementById('failure-simulation').value;
+            
+            console.log('Applying settings:', { isolationLevel, failureSimulation });
+            alert(`Settings applied:\nIsolation Level: ${isolationLevel}\nFailure Simulation: ${failureSimulation}`);
+            
+            // TODO: Send settings to backend
+        }
+
+        function filterTable() {
+            const searchValue = document.getElementById('search-bar').value.toLowerCase();
+            const table = document.getElementById('data-table');
+            const rows = table.getElementsByTagName('tr');
+
+            for (let i = 1; i < rows.length; i++) {
+                const row = rows[i];
+                const cells = row.getElementsByTagName('td');
+                let found = false;
+
+                for (let j = 0; j < cells.length; j++) {
+                    const cell = cells[j];
+                    if (cell.textContent.toLowerCase().includes(searchValue)) {
+                        found = true;
+                        break;
+                    }
+                }
+
+                row.style.display = found ? '' : 'none';
+            }
+        }
+
+        function openInsertModal() {
+            document.getElementById('insert-modal').classList.add('active');
+        }
+
+        function closeInsertModal() {
+            document.getElementById('insert-modal').classList.remove('active');
+            document.getElementById('title-name').value = '';
+            document.getElementById('title-region').value = '';
+        }
+
+        function submitInsert() {
+            const titleName = document.getElementById('title-name').value;
+            const titleRegion = document.getElementById('title-region').value;
+
+            if (!titleName || !titleRegion) {
+                alert('Please fill in all fields');
+                return;
+            }
+
+            console.log('Inserting:', { titleName, titleRegion, node: currentNode });
+            alert(`Inserting record:\nTitle: ${titleName}\nRegion: ${titleRegion}\nNode: ${currentNode}`);
+            
+            // TODO: Send insert request to backend
+            
+            closeInsertModal();
+        }
+
+        function editRow(id) {
+            console.log('Editing row:', id);
+            alert(`Edit functionality for row ${id} - TODO: Implement`);
+            // TODO: Implement edit functionality
+        }
+
+        // Close modal when clicking outside
+        document.getElementById('insert-modal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeInsertModal();
+            }
+        });
+    </script>
 </body>
 </html>
