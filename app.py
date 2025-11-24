@@ -9,10 +9,10 @@ CORS(app) # This allows your other nodes/browsers to talk to this API
 # Database configuration
 DB_CONFIG = {
     'node1': {
-        'host': '10.2.14.84',  # <--- UPDATE THIS (Server0 IP)
+        'host': '10.2.14.84', 
         'user': 'admin',
-        'password': 'securepass',     # <--- Ask Allen for DB password
-        'database': 'mco2_ddb'       # <--- Ask James for DB Name
+        'password': 'securepass',     
+        'database': 'mco2_ddb'      
     },
     'node2': {
         'host': '10.2.14.85',  
