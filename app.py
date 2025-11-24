@@ -11,19 +11,19 @@ DB_CONFIG = {
     'node1': {
         'host': '10.2.14.84', 
         'user': 'admin',
-        'password': 'securepass',     
+        'password': 'poginiallen',     
         'database': 'mco2_ddb'      
     },
     'node2': {
         'host': '10.2.14.85',  
         'user': 'admin',
-        'password': 'securepass',
+        'password': 'poginiallen',
         'database': 'mco2_ddb'
     },
     'node3': {
         'host': '10.2.14.86',  
         'user': 'admin',
-        'password': 'securepass',
+        'password': 'poginiallen',
         'database': 'mco2_ddb'
     }
 }
