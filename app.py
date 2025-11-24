@@ -12,4 +12,4 @@ def index():
 # This block allows you to run the app directly
 if __name__ == '__main__':
     # Set host to '0.0.0.0' for external access (needed for Proxmox/VMs)
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=80)
