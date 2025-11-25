@@ -195,6 +195,15 @@
             width: 100%;
             border-collapse: collapse;
             margin-top: 20px;
+            overflow-x: auto;
+            display: block;
+        }
+
+        .data-table thead,
+        .data-table tbody {
+            display: table;
+            width: 100%;
+            table-layout: fixed;
         }
 
         .data-table th,
@@ -202,6 +211,9 @@
             padding: 12px;
             text-align: left;
             border-bottom: 1px solid #ddd;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         .data-table th {
@@ -224,12 +236,14 @@
             height: 100%;
             background-color: rgba(0,0,0,0.5);
             z-index: 1000;
+            overflow-y: auto;
         }
 
         .modal.active {
             display: flex;
             justify-content: center;
             align-items: center;
+            padding: 20px;
         }
 
         .modal-content {
@@ -237,7 +251,9 @@
             padding: 30px;
             border-radius: 8px;
             width: 90%;
-            max-width: 500px;
+            max-width: 600px;
+            max-height: 90vh;
+            overflow-y: auto;
         }
 
         .modal-header {
@@ -256,12 +272,26 @@
             margin-bottom: 15px;
         }
 
-        .modal-body input {
+        .modal-body input,
+        .modal-body select,
+        .modal-body textarea {
             width: 100%;
             padding: 8px 12px;
             border: 1px solid #ddd;
             border-radius: 4px;
             font-size: 14px;
+            font-family: Arial, sans-serif;
+        }
+
+        .modal-body textarea {
+            resize: vertical;
+            min-height: 60px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
         }
 
         .modal-footer {
@@ -276,6 +306,15 @@
 
         .cancel-button:hover {
             background-color: #5a6268;
+        }
+
+        .delete-button {
+            background-color: #dc3545;
+            margin-left: 5px;
+        }
+
+        .delete-button:hover {
+            background-color: #c82333;
         }
     </style>
 </head>
@@ -382,26 +421,19 @@
         <table class="data-table" id="data-table">
             <thead>
                 <tr>
-                    <th>ID</th>
-                    <th>Title Name</th>
-                    <th>Title Region</th>
-                    <th>Actions</th>
+                    <th style="width: 10%;">Title ID</th>
+                    <th style="width: 5%;">Order</th>
+                    <th style="width: 20%;">Title</th>
+                    <th style="width: 8%;">Region</th>
+                    <th style="width: 8%;">Language</th>
+                    <th style="width: 12%;">Types</th>
+                    <th style="width: 15%;">Attributes</th>
+                    <th style="width: 7%;">Original</th>
+                    <th style="width: 15%;">Actions</th>
                 </tr>
             </thead>
             <tbody id="table-body">
-                <!-- Sample data - replace with actual data -->
-                <tr>
-                    <td>1</td>
-                    <td>Sample Title 1</td>
-                    <td>US</td>
-                    <td><button onclick="editRow(1)">Edit</button></td>
-                </tr>
-                <tr>
-                    <td>2</td>
-                    <td>Sample Title 2</td>
-                    <td>UK</td>
-                    <td><button onclick="editRow(2)">Edit</button></td>
-                </tr>
+                <!-- Data will be loaded dynamically -->
             </tbody>
         </table>
     </div>
@@ -413,13 +445,50 @@
                 <h2>Insert New Record</h2>
             </div>
             <div class="modal-body">
-                <div class="form-group">
-                    <label for="title-name">Title Name</label>
-                    <input type="text" id="title-name" placeholder="Enter title name">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="ordering">Ordering *</label>
+                        <input type="number" id="ordering" placeholder="Enter ordering number" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="title-region">Region *</label>
+                        <select id="title-region" required>
+                            <option value="">Select Region</option>
+                            <option value="US">US</option>
+                            <option value="JP">JP</option>
+                            <option value="ES">ES</option>
+                            <option value="FR">FR</option>
+                        </select>
+                    </div>
                 </div>
+
                 <div class="form-group">
-                    <label for="title-region">Title Region</label>
-                    <input type="text" id="title-region" placeholder="Enter title region">
+                    <label for="title-name">Title *</label>
+                    <textarea id="title-name" placeholder="Enter title name" required></textarea>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="language">Language *</label>
+                        <input type="text" id="language" placeholder="e.g., en, ja, es" maxlength="10" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="types">Types *</label>
+                        <input type="text" id="types" placeholder="e.g., movie, tvSeries" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="attributes">Attributes</label>
+                    <input type="text" id="attributes" placeholder="Enter attributes (optional)">
+                </div>
+
+                <div class="form-group">
+                    <label for="is-original">Is Original Title? *</label>
+                    <select id="is-original" required>
+                        <option value="1">Yes</option>
+                        <option value="0">No</option>
+                    </select>
                 </div>
             </div>
             <div class="modal-footer">
