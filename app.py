@@ -37,14 +37,28 @@ def get_db_connection(node_key):
     except Exception as e:
         print(f"Error connecting to {node_key}: {e}")
         return None
+    
+def execute_query(node_key, query, params=None):
+    conn = get_db_connection(node_key)
+    if not conn:
+        return {"success": False, "error": "Connection failed"}
+    
+    try:
+        cursor = conn.cursor()
+        cursor.execute(query, params or ())
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
-# Define the route for the homepage ("/")
+# Frontend / Homepage
 @app.route('/')
-def index():
-    # Flask looks inside the 'templates' folder for index.html
+def index(): 
     return render_template('index.html')
 
-# --- ROUTE 2: API Status (The Logic) ---
+# ROUTE: Status
 @app.route('/status', methods=['GET'])
 def node_status():
     status_report = {}
@@ -57,14 +71,64 @@ def node_status():
             status_report[key] = "OFFLINE"
     return jsonify(status_report)
 
-# --- ROUTE 3: API Insert (The Transaction) ---
-@app.route('/insert', methods=['POST'])
-def insert_data():
-    data = request.json
-    # We will implement the complex SQL logic here later
-    return jsonify({"message": "Data received by Backend", "data": data})
+# ROUTE: Read / Search
+@app.route('/movies', methods=['GET'])
+def get_movies():
+    # Read from Node 1 (Central)
+    conn = get_db_connection('node1')
+    if not conn:
+        return jsonify({"error": "Central Node Offline"}), 500
+    
+    cursor = conn.cursor(dictionary=True)
+    # Limit to 100 so we don't crash the browser if DB is huge
+    cursor.execute("SELECT * FROM movies LIMIT 100") 
+    rows = cursor.fetchall()
+    conn.close()
+    return jsonify(rows)
 
-# This block allows you to run the app directly
+# ROUTE: Insert
+@app.route('/insert', methods=['POST'])
+def insert_movie():
+    data = request.json
+
+    params = (
+        data.get('titleId'),
+        data.get('ordering'),
+        data.get('title'),
+        data.get('region'),
+        data.get('language'),
+        data.get('types'),
+        data.get('attributes'),
+        data.get('isOriginalTitle')
+    )
+
+    query = """
+        INSERT INTO movies 
+        (titleId, ordering, title, region, language, types, attributes, isOriginalTitle) 
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+    """
+
+    # Determine Partition (Node 2 vs Node 3)
+    # US and JP go to Node 2, the rest to Node 3
+    target_region = data.get('region')
+    target_node = 'node3' 
+    
+    if target_region in ['US', 'JP']: 
+        target_node = 'node2'
+    
+    logs = []
+
+    res_central = execute_query('node1', query, params)
+    logs.append(f"Node 1 (Central): {'Success' if res_central['success'] else 'Failed ' + res_central.get('error', '')}")
+
+    res_fragment = execute_query(target_node, query, params)
+    logs.append(f"{target_node} (Fragment): {'Success' if res_fragment['success'] else 'Failed ' + res_fragment.get('error', '')}")
+
+    return jsonify({
+        "message": "Transaction Processed",
+        "logs": logs,
+        "target_node": target_node
+    })
+
 if __name__ == '__main__':
-    # Set host to '0.0.0.0' for external access (needed for Proxmox/VMs)
     app.run(host='0.0.0.0', port=80)
