@@ -71,19 +71,40 @@ def node_status():
             status_report[key] = "OFFLINE"
     return jsonify(status_report)
 
-# ROUTE: Read / Search
+# ROUTE: Read/Search
 @app.route('/movies', methods=['GET'])
 def get_movies():
-    # Read from Node 1 (Central)
+    # 1. Check if the frontend sent a search term
+    # usage: /movies?q=something
+    search_term = request.args.get('q')
+    
     conn = get_db_connection('node1')
     if not conn:
         return jsonify({"error": "Central Node Offline"}), 500
     
     cursor = conn.cursor(dictionary=True)
-    # Limit to 100 so we don't crash the browser if DB is huge
-    cursor.execute("SELECT * FROM movies LIMIT 100") 
+    
+    if search_term:
+        # 2. If search term exists, filter by ID, Title, OR Region
+        # We use wildcards (%) to match partial text (e.g. "Avat" matches "Avatar")
+        query = """
+            SELECT * FROM movies 
+            WHERE titleId LIKE %s 
+               OR title LIKE %s 
+               OR region LIKE %s 
+            LIMIT 100
+        """
+        # Add wildcards to the search term
+        wildcard_term = f"%{search_term}%"
+        params = (wildcard_term, wildcard_term, wildcard_term)
+        cursor.execute(query, params)
+    else:
+        # 3. No search term? Return default list
+        cursor.execute("SELECT * FROM movies")
+        
     rows = cursor.fetchall()
     conn.close()
+    
     return jsonify(rows)
 
 # ROUTE: Insert
