@@ -82,13 +82,9 @@ function closeInsertModal() {
     document.getElementById('is-original').value = '1';
 }
 
-<<<<<<< Updated upstream
-function submitInsert() {
-=======
 async function submitInsert() {
     // Get all form values
     const ordering = document.getElementById('ordering').value;
->>>>>>> Stashed changes
     const titleName = document.getElementById('title-name').value;
     const titleRegion = document.getElementById('title-region').value;
     const language = document.getElementById('language').value;
@@ -102,14 +98,6 @@ async function submitInsert() {
         return;
     }
 
-<<<<<<< Updated upstream
-    console.log('Inserting:', { titleName, titleRegion, node: currentNode });
-    alert(`Inserting record:\nTitle: ${titleName}\nRegion: ${titleRegion}\nNode: ${currentNode}`);
-    
-    // TODO: Send insert request to backend
-    
-    closeInsertModal();
-=======
     // Prepare the Payload
     const payload = {
         titleId: "tt" + Math.floor(Math.random() * 10000000), // Random ID
@@ -144,7 +132,6 @@ async function submitInsert() {
         console.error("Insert failed:", error);
         alert("Failed to insert record. Check console for details.");
     }
->>>>>>> Stashed changes
 }
 
 function editRow(titleId) {
