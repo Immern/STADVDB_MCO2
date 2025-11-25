@@ -1,23 +1,63 @@
+let currentOffset = 0;
+let currentLimit = 100;
+let totalRows = 0;
+let currentFilters = {
+    titleId: '',
+    title: '',
+    region: ''
+};
+
 async function loadNodeData(nodeNumber) {
+    currentOffset = 0; // Reset offset when loading new node
+    await fetchMovies();
+}
+
+async function fetchMovies() {
     try {
+        // Build query parameters
+        const params = new URLSearchParams({
+            offset: currentOffset,
+            limit: currentLimit,
+            titleId: currentFilters.titleId,
+            title: currentFilters.title,
+            region: currentFilters.region
+        });
+
         // Fetch movies from backend
-        const response = await fetch('/movies');
-        const data = await response.json();
+        const response = await fetch(`/movies?${params}`);
+        const result = await response.json();
         
-        console.log('Loaded data for node:', nodeNumber, data);
+        console.log('Loaded data:', result);
         
-        // Clear existing table rows
+        // Update total rows count
+        totalRows = result.total;
+        updateRowCount();
+        
+        // Clear or append to table
         const tableBody = document.getElementById('table-body');
-        tableBody.innerHTML = '';
+        if (currentOffset === 0) {
+            tableBody.innerHTML = '';
+        }
         
         // Check if data is empty
-        if (!data || data.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="9" style="text-align: center;">No data available</td></tr>';
+        if (!result.data || result.data.length === 0) {
+            if (currentOffset === 0) {
+                tableBody.innerHTML = '<tr><td colspan="9" style="text-align: center;">No data available</td></tr>';
+            }
+            // Hide load more button if no more data
+            document.getElementById('load-more-btn').style.display = 'none';
             return;
         }
         
+        // Show load more button if there's more data
+        if (currentOffset + result.data.length < totalRows) {
+            document.getElementById('load-more-btn').style.display = 'block';
+        } else {
+            document.getElementById('load-more-btn').style.display = 'none';
+        }
+        
         // Populate table with data
-        data.forEach(movie => {
+        result.data.forEach(movie => {
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td title="${movie.titleId || 'N/A'}">${movie.titleId || 'N/A'}</td>
@@ -29,7 +69,7 @@ async function loadNodeData(nodeNumber) {
                 <td title="${movie.attributes || 'N/A'}">${movie.attributes || 'N/A'}</td>
                 <td>${movie.isOriginalTitle == 1 ? 'Yes' : 'No'}</td>
                 <td>
-                    <button onclick="editRow('${movie.titleId}')">Edit</button>
+                    <button onclick='editRow(${JSON.stringify(movie)})'>Edit</button>
                     <button class="delete-button" onclick="deleteRow('${movie.titleId}')">Delete</button>
                 </td>
             `;
@@ -43,26 +83,44 @@ async function loadNodeData(nodeNumber) {
     }
 }
 
-function filterTable() {
-    const searchValue = document.getElementById('search-bar').value.toLowerCase();
-    const table = document.getElementById('data-table');
-    const rows = table.getElementsByTagName('tr');
+function updateRowCount() {
+    const currentRows = Math.min(currentOffset + currentLimit, totalRows);
+    document.getElementById('current-rows').textContent = currentRows;
+    document.getElementById('total-rows').textContent = totalRows;
+}
 
-    for (let i = 1; i < rows.length; i++) {
-        const row = rows[i];
-        const cells = row.getElementsByTagName('td');
-        let found = false;
+function loadMoreRows() {
+    currentOffset += currentLimit;
+    fetchMovies();
+}
 
-        for (let j = 0; j < cells.length; j++) {
-            const cell = cells[j];
-            if (cell.textContent.toLowerCase().includes(searchValue)) {
-                found = true;
-                break;
-            }
-        }
+function applyFilters() {
+    // Get filter values
+    currentFilters.titleId = document.getElementById('filter-titleid').value.trim();
+    currentFilters.title = document.getElementById('filter-title').value.trim();
+    currentFilters.region = document.getElementById('filter-region').value.trim();
+    
+    // Reset offset and fetch
+    currentOffset = 0;
+    fetchMovies();
+}
 
-        row.style.display = found ? '' : 'none';
-    }
+function clearFilters() {
+    // Clear filter inputs
+    document.getElementById('filter-titleid').value = '';
+    document.getElementById('filter-title').value = '';
+    document.getElementById('filter-region').value = '';
+    
+    // Clear filter values
+    currentFilters = {
+        titleId: '',
+        title: '',
+        region: ''
+    };
+    
+    // Reset and fetch
+    currentOffset = 0;
+    fetchMovies();
 }
 
 function openInsertModal() {
@@ -126,7 +184,8 @@ async function submitInsert() {
         
         // Refresh Data
         closeInsertModal();
-        loadNodeData(currentNode);
+        currentOffset = 0;
+        fetchMovies();
 
     } catch (error) {
         console.error("Insert failed:", error);
@@ -134,10 +193,76 @@ async function submitInsert() {
     }
 }
 
-function editRow(titleId) {
-    console.log('Editing row:', titleId);
-    alert(`Edit functionality for row ${titleId} - TODO: Implement`);
-    // TODO: Implement edit functionality
+function editRow(movie) {
+    // Populate edit modal with current data
+    document.getElementById('edit-titleid').value = movie.titleId;
+    document.getElementById('edit-ordering').value = movie.ordering;
+    document.getElementById('edit-title').value = movie.title;
+    document.getElementById('edit-region').value = movie.region;
+    document.getElementById('edit-language').value = movie.language;
+    document.getElementById('edit-types').value = movie.types;
+    document.getElementById('edit-attributes').value = movie.attributes || '';
+    document.getElementById('edit-is-original').value = movie.isOriginalTitle;
+    
+    // Open modal
+    document.getElementById('edit-modal').classList.add('active');
+}
+
+function closeEditModal() {
+    document.getElementById('edit-modal').classList.remove('active');
+}
+
+async function submitUpdate() {
+    // Get form values
+    const titleId = document.getElementById('edit-titleid').value;
+    const ordering = document.getElementById('edit-ordering').value;
+    const title = document.getElementById('edit-title').value;
+    const region = document.getElementById('edit-region').value;
+    const language = document.getElementById('edit-language').value;
+    const types = document.getElementById('edit-types').value;
+    const attributes = document.getElementById('edit-attributes').value;
+    const isOriginal = document.getElementById('edit-is-original').value;
+
+    // Validate
+    if (!ordering || !title || !region || !language || !types) {
+        alert('Please fill in all required fields');
+        return;
+    }
+
+    const payload = {
+        titleId: titleId,
+        ordering: parseInt(ordering),
+        title: title,
+        region: region,
+        language: language,
+        types: types,
+        attributes: attributes || 'N/A',
+        isOriginalTitle: parseInt(isOriginal)
+    };
+
+    console.log('Updating:', payload);
+
+    try {
+        const response = await fetch('/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+        
+        // Show Feedback
+        alert(`Update Status:\n${result.logs.join('\n')}`);
+        
+        // Refresh Data
+        closeEditModal();
+        currentOffset = 0;
+        fetchMovies();
+
+    } catch (error) {
+        console.error("Update failed:", error);
+        alert("Failed to update record. Check console for details.");
+    }
 }
 
 async function deleteRow(titleId) {
@@ -158,7 +283,8 @@ async function deleteRow(titleId) {
         alert(`Delete Status:\n${result.logs.join('\n')}`);
         
         // Refresh Data
-        loadNodeData(currentNode);
+        currentOffset = 0;
+        fetchMovies();
 
     } catch (error) {
         console.error("Delete failed:", error);
@@ -166,13 +292,28 @@ async function deleteRow(titleId) {
     }
 }
 
-// Close modal when clicking outside - wait for DOM to load
+function simulateConcurrency() {
+    alert('Simulate Concurrency feature - Coming soon!\n\nThis will trigger concurrent transactions for testing.');
+    // TODO: Implement concurrency simulation
+    console.log('Simulate concurrency clicked');
+}
+
+// Close modals when clicking outside - wait for DOM to load
 document.addEventListener('DOMContentLoaded', function() {
-    const modal = document.getElementById('insert-modal');
-    if (modal) {
-        modal.addEventListener('click', function(e) {
+    const insertModal = document.getElementById('insert-modal');
+    if (insertModal) {
+        insertModal.addEventListener('click', function(e) {
             if (e.target === this) {
                 closeInsertModal();
+            }
+        });
+    }
+    
+    const editModal = document.getElementById('edit-modal');
+    if (editModal) {
+        editModal.addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeEditModal();
             }
         });
     }

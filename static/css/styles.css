@@ -73,6 +73,14 @@ button:hover {
     background-color: #0056b3;
 }
 
+.secondary-button {
+    background-color: #6c757d;
+}
+
+.secondary-button:hover {
+    background-color: #5a6268;
+}
+
 /* =======================
    NODES GRID (Dashboard)
    ======================= */
@@ -171,18 +179,47 @@ button:hover {
     background-color: #5a6268;
 }
 
-.search-insert-section {
-    display: flex;
-    gap: 10px;
+/* Row Count Display */
+.row-count-display {
+    background-color: #e7f3ff;
+    padding: 10px 15px;
+    border-radius: 4px;
     margin-bottom: 20px;
+    font-size: 14px;
+    color: #004085;
+    font-weight: 500;
 }
 
-.search-bar {
+/* Filter Section */
+.filter-section {
+    display: flex;
+    gap: 15px;
+    align-items: flex-end;
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: #f9f9f9;
+    border-radius: 4px;
+    flex-wrap: wrap;
+}
+
+.filter-section .form-group {
     flex: 1;
+    min-width: 150px;
+}
+
+.filter-section input {
     padding: 8px 12px;
     border: 1px solid #ddd;
     border-radius: 4px;
     font-size: 14px;
+    width: 100%;
+}
+
+/* Action Buttons Section */
+.action-buttons {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
 }
 
 /* =======================
@@ -194,6 +231,15 @@ button:hover {
 
 .insert-button:hover {
     background-color: #218838;
+}
+
+/* Concurrency Button */
+.concurrency-button {
+    background-color: #fd7e14;
+}
+
+.concurrency-button:hover {
+    background-color: #e8590c;
 }
 
 /* =======================
@@ -210,17 +256,17 @@ button:hover {
 .data-table {
     width: 100%;
     border-collapse: collapse;
-    table-layout: fixed; /* ensures header = body width alignment */
+    table-layout: fixed;
 }
 
 /* Cells */
 .data-table th,
 .data-table td {
-    padding: 6px 8px;       /* smaller padding */
-    font-size: 13px;        /* smaller fonts */
+    padding: 6px 8px;
+    font-size: 13px;
     line-height: 1.2;
-    word-wrap: break-word;  /* breaks long text */
-    white-space: normal;    /* allows wrapping */
+    word-wrap: break-word;
+    white-space: normal;
     border-bottom: 1px solid #ddd;
 }
 
@@ -231,12 +277,28 @@ button:hover {
     font-weight: bold;
     overflow: visible;
     text-overflow: initial;
-    white-space: normal; /* wraps long column names */
+    white-space: normal;
 }
 
 /* Hover */
 .data-table tr:hover {
     background-color: #f5f5f5;
+}
+
+/* Load More Section */
+.load-more-section {
+    margin-top: 20px;
+    text-align: center;
+}
+
+#load-more-btn {
+    background-color: #17a2b8;
+    padding: 12px 30px;
+    font-size: 15px;
+}
+
+#load-more-btn:hover {
+    background-color: #138496;
 }
 
 /* =======================
@@ -295,6 +357,11 @@ button:hover {
     font-family: Arial, sans-serif;
 }
 
+.modal-body textarea {
+    min-height: 60px;
+    resize: vertical;
+}
+
 /* Form Row */
 .form-row {
     display: grid;
@@ -306,6 +373,7 @@ button:hover {
     display: flex;
     gap: 10px;
     justify-content: flex-end;
+    margin-top: 20px;
 }
 
 .cancel-button {

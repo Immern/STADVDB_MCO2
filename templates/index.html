@@ -44,16 +44,16 @@
             <div class="node-card" onclick="navigateToNode(1)">
                 <div class="node-header">
                     <div class="node-title">Node 1 (Central)</div>
-                    <span class="status-indicator status-online" id="node1-status">ONLINE</span>
+                    <span class="status-indicator status-online" id="node1-status">LOADING...</span>
                 </div>
                 <div class="node-info">
                     <div class="info-row">
                         <span class="info-label">Last Update:</span>
-                        <span id="node1-update">2025-11-24 10:30:00</span>
+                        <span id="node1-update">--</span>
                     </div>
                     <div class="info-row">
                         <span class="info-label">Rows:</span>
-                        <span id="node1-rows">1000</span>
+                        <span id="node1-rows">--</span>
                     </div>
                 </div>
             </div>
@@ -61,17 +61,17 @@
             <div class="node-card" onclick="navigateToNode(2)">
                 <div class="node-header">
                     <div class="node-title">Node 2 (Regional)</div>
-                    <span class="status-indicator status-online" id="node2-status">ONLINE</span>
+                    <span class="status-indicator status-online" id="node2-status">LOADING...</span>
                 </div>
 
                 <div class="node-info">
                     <div class="info-row">
                         <span class="info-label">Last Update:</span>
-                        <span id="node2-update">2025-11-24 10:29:45</span>
+                        <span id="node2-update">--</span>
                     </div>
                     <div class="info-row">
                         <span class="info-label">Rows:</span>
-                        <span id="node2-rows">450</span>
+                        <span id="node2-rows">--</span>
                     </div>
                 </div>
             </div>
@@ -79,16 +79,16 @@
             <div class="node-card" onclick="navigateToNode(3)">
                 <div class="node-header">
                     <div class="node-title">Node 3 (Regional)</div>
-                    <span class="status-indicator status-online" id="node3-status">ONLINE</span>
+                    <span class="status-indicator status-online" id="node3-status">LOADING...</span>
                 </div>
                 <div class="node-info">
                     <div class="info-row">
                         <span class="info-label">Last Update:</span>
-                        <span id="node3-update">2025-11-24 10:29:50</span>
+                        <span id="node3-update">--</span>
                     </div>
                     <div class="info-row">
                         <span class="info-label">Rows:</span>
-                        <span id="node3-rows">550</span>
+                        <span id="node3-rows">--</span>
                     </div>
                 </div>
             </div>
@@ -104,9 +104,33 @@
             </div>
         </div>
 
-        <div class="search-insert-section">
-            <input type="text" class="search-bar" id="search-bar" placeholder="Search data..." onkeyup="filterTable()">
+        <!-- Row Count Display -->
+        <div class="row-count-display">
+            Showing <span id="current-rows">0</span> of <span id="total-rows">0</span> rows
+        </div>
+
+        <!-- Filter Section -->
+        <div class="filter-section">
+            <div class="form-group">
+                <label for="filter-titleid">Title ID</label>
+                <input type="text" id="filter-titleid" placeholder="Filter by Title ID">
+            </div>
+            <div class="form-group">
+                <label for="filter-title">Title</label>
+                <input type="text" id="filter-title" placeholder="Filter by Title">
+            </div>
+            <div class="form-group">
+                <label for="filter-region">Region</label>
+                <input type="text" id="filter-region" placeholder="Filter by Region">
+            </div>
+            <button onclick="applyFilters()">Apply Filters</button>
+            <button class="secondary-button" onclick="clearFilters()">Clear</button>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="action-buttons">
             <button class="insert-button" onclick="openInsertModal()">+ Insert</button>
+            <button class="concurrency-button" onclick="simulateConcurrency()">⚡ Simulate Concurrency</button>
         </div>
 
         <table class="data-table" id="data-table">
@@ -127,6 +151,11 @@
                 <!-- Data will be loaded dynamically -->
             </tbody>
         </table>
+
+        <!-- Load More Button -->
+        <div class="load-more-section">
+            <button id="load-more-btn" onclick="loadMoreRows()">Load More Rows</button>
+        </div>
     </div>
 
     <!-- Insert Modal -->
@@ -185,6 +214,62 @@
             <div class="modal-footer">
                 <button class="cancel-button" onclick="closeInsertModal()">Cancel</button>
                 <button onclick="submitInsert()">Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Modal -->
+    <div id="edit-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Edit Record</h2>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit-titleid">
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="edit-ordering">Ordering *</label>
+                        <input type="number" id="edit-ordering" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-region">Region *</label>
+                        <input type="text" id="edit-region" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="edit-title">Title *</label>
+                    <textarea id="edit-title" required></textarea>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="edit-language">Language *</label>
+                        <input type="text" id="edit-language" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-types">Types *</label>
+                        <input type="text" id="edit-types" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="edit-attributes">Attributes</label>
+                    <input type="text" id="edit-attributes">
+                </div>
+
+                <div class="form-group">
+                    <label for="edit-is-original">Is Original Title? *</label>
+                    <select id="edit-is-original" required>
+                        <option value="1">Yes</option>
+                        <option value="0">No</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="cancel-button" onclick="closeEditModal()">Cancel</button>
+                <button onclick="submitUpdate()">Update</button>
             </div>
         </div>
     </div>
