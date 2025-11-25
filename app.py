@@ -131,6 +131,7 @@ def insert_movie():
     })
 
 # ROUTE: Update
+@app.route('/update', methods=['POST'])
 def update_movie():
     data = request.json
     
