@@ -1,7 +1,6 @@
 from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
 import mysql.connector
-from datetime import datetime
 
 # Initialize the Flask application
 app = Flask(__name__)
@@ -38,41 +37,6 @@ def get_db_connection(node_key):
     except Exception as e:
         print(f"Error connecting to {node_key}: {e}")
         return None
-
-def get_row_count(node_key):
-    """Get the total number of rows in a node"""
-    conn = get_db_connection(node_key)
-    if not conn:
-        return 0
-    
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM movies")
-        count = cursor.fetchone()[0]
-        cursor.close()
-        conn.close()
-        return count
-    except Exception as e:
-        print(f"Error counting rows in {node_key}: {e}")
-        return 0
-
-def get_last_update(node_key):
-    """Get the timestamp of the last update in a node"""
-    conn = get_db_connection(node_key)
-    if not conn:
-        return None
-    
-    try:
-        cursor = conn.cursor()
-        # This assumes you have a timestamp column. If not, return current time
-        cursor.execute("SELECT MAX(CURRENT_TIMESTAMP) FROM movies LIMIT 1")
-        timestamp = cursor.fetchone()[0]
-        cursor.close()
-        conn.close()
-        return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    except Exception as e:
-        print(f"Error getting last update for {node_key}: {e}")
-        return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
 def execute_query(node_key, query, params=None):
     conn = get_db_connection(node_key)
@@ -94,96 +58,33 @@ def execute_query(node_key, query, params=None):
 def index(): 
     return render_template('index.html')
 
-# ROUTE: Status with detailed information
+# ROUTE: Status
 @app.route('/status', methods=['GET'])
 def node_status():
     status_report = {}
     for key in DB_CONFIG:
         conn = get_db_connection(key)
         if conn:
-            row_count = get_row_count(key)
-            last_update = get_last_update(key)
-            status_report[key] = {
-                "status": "ONLINE",
-                "rows": row_count,
-                "lastUpdate": last_update
-            }
+            status_report[key] = "ONLINE"
             conn.close()
         else:
-            status_report[key] = {
-                "status": "OFFLINE",
-                "rows": 0,
-                "lastUpdate": "N/A"
-            }
+            status_report[key] = "OFFLINE"
     return jsonify(status_report)
 
-# ROUTE: Read / Search with filters and pagination
+# ROUTE: Read / Search
 @app.route('/movies', methods=['GET'])
 def get_movies():
-    # Get query parameters
-    offset = int(request.args.get('offset', 0))
-    limit = int(request.args.get('limit', 100))
-    title_id = request.args.get('titleId', '')
-    title = request.args.get('title', '')
-    region = request.args.get('region', '')
-    
     # Read from Node 1 (Central)
     conn = get_db_connection('node1')
     if not conn:
         return jsonify({"error": "Central Node Offline"}), 500
     
     cursor = conn.cursor(dictionary=True)
-    
-    # Build query with filters
-    query = "SELECT * FROM movies WHERE 1=1"
-    params = []
-    
-    if title_id:
-        query += " AND titleId LIKE %s"
-        params.append(f"%{title_id}%")
-    
-    if title:
-        query += " AND title LIKE %s"
-        params.append(f"%{title}%")
-    
-    if region:
-        query += " AND region = %s"
-        params.append(region)
-    
-    # Add pagination
-    query += " LIMIT %s OFFSET %s"
-    params.extend([limit, offset])
-    
-    cursor.execute(query, params)
+    # Limit to 100 so we don't crash the browser if DB is huge
+    cursor.execute("SELECT * FROM movies LIMIT 100") 
     rows = cursor.fetchall()
-    
-    # Get total count with same filters
-    count_query = "SELECT COUNT(*) as total FROM movies WHERE 1=1"
-    count_params = []
-    
-    if title_id:
-        count_query += " AND titleId LIKE %s"
-        count_params.append(f"%{title_id}%")
-    
-    if title:
-        count_query += " AND title LIKE %s"
-        count_params.append(f"%{title}%")
-    
-    if region:
-        count_query += " AND region = %s"
-        count_params.append(region)
-    
-    cursor.execute(count_query, count_params)
-    total_count = cursor.fetchone()['total']
-    
     conn.close()
-    
-    return jsonify({
-        "data": rows,
-        "total": total_count,
-        "offset": offset,
-        "limit": limit
-    })
+    return jsonify(rows)
 
 # ROUTE: Insert
 @app.route('/insert', methods=['POST'])
@@ -281,11 +182,12 @@ def delete_movie():
     
     logs = []
 
-    # Delete from Central (Node 1)
+    # 1. Delete from Central (Node 1)
     res_central = execute_query('node1', query, params)
     logs.append(f"Node 1 Delete: {'Success' if res_central['success'] else 'Failed'}")
     
-    # Delete from Fragments (Node 2 AND Node 3)
+    # 2. Delete from Fragments (Node 2 AND Node 3)
+    # Just like update, we try deleting from both to ensure it's gone everywhere.
     res_node2 = execute_query('node2', query, params)
     logs.append(f"Node 2 Delete: {'Success' if res_node2['success'] else 'Failed'}")
 
