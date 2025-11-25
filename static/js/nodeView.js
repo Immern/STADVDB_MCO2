@@ -35,7 +35,7 @@ function closeInsertModal() {
     document.getElementById('title-region').value = '';
 }
 
-function submitInsert() {
+async function submitInsert() {
     const titleName = document.getElementById('title-name').value;
     const titleRegion = document.getElementById('title-region').value;
 
@@ -47,7 +47,41 @@ function submitInsert() {
     console.log('Inserting:', { titleName, titleRegion, node: currentNode });
     alert(`Inserting record:\nTitle: ${titleName}\nRegion: ${titleRegion}\nNode: ${currentNode}`);
     
-    // TODO: Send insert request to backend
+    // 1. Prepare the Payload matching your Schema
+    // Since the UI only asks for Name/Region, we generate the rest.
+    const payload = {
+        titleId: "tt" + Math.floor(Math.random() * 1000000), // Random ID
+        ordering: 1,
+        title: titleName,
+        region: titleRegion,
+        language: "en",      // Default
+        types: "movie",      // Default
+        attributes: "N/A",   // Default
+        isOriginalTitle: 1   // Default
+    };
+
+    console.log('Sending to backend:', payload);
+
+    try {
+        const response = await fetch('/insert', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+
+        // Show Feedback
+        alert(`Transaction Status:\n${result.logs.join('\n')}`);
+        
+        // Refresh Data
+        closeInsertModal();
+        loadNodeData(currentNode);
+
+    } catch (error) {
+        console.error("Insert failed:", error);
+        alert("Failed to insert record. Check console for details.");
+    }
     
     closeInsertModal();
 }
