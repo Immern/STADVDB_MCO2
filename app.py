@@ -130,5 +130,73 @@ def insert_movie():
         "target_node": target_node
     })
 
+# ROUTE: Update
+def update_movie():
+    data = request.json
+    
+    # 1. Extract Data
+    # We assume we update attributes other than titleId (Primary Key)
+    title_id = data.get('titleId')
+    new_title = data.get('title')
+    new_ordering = data.get('ordering')
+    
+    # NOTE: If you update 'region', you technically need to Move the data 
+    # from Node 2 to Node 3 (Delete + Insert). 
+    # For this simple implementation, we will assume Region doesn't change 
+    # or we just try to update everywhere.
+    
+    query = "UPDATE movies SET title = %s, ordering = %s WHERE titleId = %s"
+    params = (new_title, new_ordering, title_id)
+    
+    logs = []
+
+    # 2. Update Central Node (Node 1) - Always
+    res_central = execute_query('node1', query, params)
+    logs.append(f"Node 1 Update: {'Success' if res_central['success'] else 'Failed'}")
+    
+    # 3. Update Fragments (Node 2 AND Node 3)
+    # Strategy: Since we might not know which node has it without querying first,
+    # and "Update where ID=X" does nothing if ID doesn't exist, 
+    # we can safely try running the update on both fragment nodes.
+    
+    res_node2 = execute_query('node2', query, params)
+    logs.append(f"Node 2 Update: {'Success' if res_node2['success'] else 'Failed'}")
+    
+    res_node3 = execute_query('node3', query, params)
+    logs.append(f"Node 3 Update: {'Success' if res_node3['success'] else 'Failed'}")
+
+    return jsonify({
+        "message": "Update Processed",
+        "logs": logs
+    })
+
+# ROUTE: Delete
+@app.route('/delete', methods=['POST'])
+def delete_movie():
+    data = request.json
+    title_id = data.get('titleId')
+    
+    query = "DELETE FROM movies WHERE titleId = %s"
+    params = (title_id,)
+    
+    logs = []
+
+    # 1. Delete from Central (Node 1)
+    res_central = execute_query('node1', query, params)
+    logs.append(f"Node 1 Delete: {'Success' if res_central['success'] else 'Failed'}")
+    
+    # 2. Delete from Fragments (Node 2 AND Node 3)
+    # Just like update, we try deleting from both to ensure it's gone everywhere.
+    res_node2 = execute_query('node2', query, params)
+    logs.append(f"Node 2 Delete: {'Success' if res_node2['success'] else 'Failed'}")
+
+    res_node3 = execute_query('node3', query, params)
+    logs.append(f"Node 3 Delete: {'Success' if res_node3['success'] else 'Failed'}")
+
+    return jsonify({
+        "message": "Delete Processed",
+        "logs": logs
+    })
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=80)
