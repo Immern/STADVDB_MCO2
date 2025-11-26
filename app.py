@@ -132,11 +132,40 @@ def get_movies():
     return jsonify(rows)
 
 # ROUTE: Insert
+# ROUTE: Insert
 @app.route('/insert', methods=['POST'])
 def insert_movie():
+    # Ensure the LOG_MANAGER is available (from global instantiation)
+    if not LOG_MANAGER:
+        return jsonify({"error": "Distributed Log Manager not initialized."}), 500
+
     data = request.json
 
+    # ------------------------------------------------------------------
+    # CRITICAL DECLARATION POINT: Generate ID and extract Log Data
+    # ------------------------------------------------------------------
+    # 1. Generate the unique ID for the entire transaction chain
+    txn_id = str(uuid.uuid4()) 
+    
+    # 2. Identify the Primary Key (used as record_key in the log)
+    record_key = data.get('titleId')
+    
+    # 3. Create the 'After Image' (new_value) for the log
+    # This stores the final state of the row for REDO operations
+    new_value = {
+        'titleId': record_key,
+        'ordering': data.get('ordering'),
+        'title': data.get('title'),
+        'region': data.get('region'),
+        'language': data.get('language'),
+        'types': data.get('types'),
+        'attributes': data.get('attributes'),
+        'isOriginalTitle': data.get('isOriginalTitle')
+    }
+    # ------------------------------------------------------------------
+    
     params = (
+        # ... your existing params definition, pulling from 'data'
         data.get('titleId'),
         data.get('ordering'),
         data.get('title'),
@@ -154,45 +183,54 @@ def insert_movie():
     """
 
     # Determine Partition (Node 2 vs Node 3)
-    # US and JP go to Node 2, the rest to Node 3
     target_region = data.get('region')
-    target_node = 'node3' 
+    target_node_key = 'node3' 
+    target_node_id = 3 # Use integer ID for the log
     
     if target_region in ['US', 'JP']: 
-        target_node = 'node2'
+        target_node_key = 'node2'
+        target_node_id = 2
     
     # logs for CONSOLE output
     logs = []
-    res_central = execute_query('node1', query, params)
+    
+    # --- STEP 1: LOCAL COMMIT on Node 1 ---
+    # execute_query is called without any logging *before* because we are using 
+    # the Deferred Modification Model: Log the success *after* the commit (WAL).
+    res_central = execute_query('node1', query, params) 
     
     # Performed operation in the local was a success,
     # therefore we proceed to performing the replication
     if res_central['success']:
         # 2. Log Local Commit Success (Deferred Modification Log)
+        # This log entry makes the transaction durable for Node 1.
         LOG_MANAGER.log_local_commit(txn_id, 'INSERT', record_key, new_value)
         logs.append(f"Node 1 (Central): Success & Logged")
 
         # --- STEP 2: REPLICATION TO FRAGMENT ---
         
         # 3. Log Replication Intent (REPLICATION_PENDING)
+        # Tracks the intent to replicate using the txn_id and target ID.
         LOG_MANAGER.log_replication_attempt(txn_id, target_node_id)
         
         # 4. Execute Replication Write to Fragment Node
         res_fragment = execute_query(target_node_key, query, params)
         
         # 5. Update Replication Status (Case #3 logic relies on this status update)
+        # Marks the transaction as success or failure for the specific target node.
         LOG_MANAGER.update_replication_status(txn_id, target_node_id, res_fragment['success'])
         
         logs.append(f"{target_node_key} (Fragment): {'Success' if res_fragment['success'] else 'Failed (Log updated)'}")
         
     else:
+        # Local commit failed. Transaction is considered aborted. No log entry for success is written.
         logs.append(f"Node 1 (Central): Failed - {res_central.get('error', '')}")
-        # Note: In deferred, if the local commit fails, we don't proceed.
         
     return jsonify({
         "message": "Transaction Processed",
         "logs": logs,
-        "target_node": target_node
+        "target_node": target_node_key, # Corrected to use target_node_key
+        "txn_id": txn_id # Include txn_id in the response for testing/debugging
     })
 
 # ROUTE: Update
