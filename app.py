@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 import json
 from dotenv import load_dotenv
-
+import os
 
 load_dotenv()
 LOCAL_NODE_KEY = os.environ.get('LOCAL_NODE_KEY', 'node1') 
