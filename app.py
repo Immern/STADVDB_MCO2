@@ -198,31 +198,15 @@ def insert_movie():
     
     # logs for CONSOLE output
     logs = []
-    
-    # --- STEP 1: LOCAL COMMIT on Node 1 ---
-    # execute_query is called without any logging *before* because we are using 
-    # the Deferred Modification Model: Log the success *after* the commit (WAL).
     res_central = execute_query('node1', query, params) 
     
     # Performed operation in the local was a success,
     # therefore we proceed to performing the replication
     if res_central['success']:
-        # 2. Log Local Commit Success (Deferred Modification Log)
-        # This log entry makes the transaction durable for Node 1.
         LOG_MANAGER.log_local_commit(txn_id, 'INSERT', record_key, new_value)
         logs.append(f"Node 1 (Central): Success & Logged")
-
-        # --- STEP 2: REPLICATION TO FRAGMENT ---
-        
-        # 3. Log Replication Intent (REPLICATION_PENDING)
-        # Tracks the intent to replicate using the txn_id and target ID.
         LOG_MANAGER.log_replication_attempt(txn_id, target_node_id)
-        
-        # 4. Execute Replication Write to Fragment Node
         res_fragment = execute_query(target_node_key, query, params)
-        
-        # 5. Update Replication Status (Case #3 logic relies on this status update)
-        # Marks the transaction as success or failure for the specific target node.
         LOG_MANAGER.update_replication_status(txn_id, target_node_id, res_fragment['success'])
         
         logs.append(f"{target_node_key} (Fragment): {'Success' if res_fragment['success'] else 'Failed (Log updated)'}")

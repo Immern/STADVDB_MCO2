@@ -45,7 +45,19 @@ class DistributedLogManager:
             json.dumps(new_data)
         )
         # self.db_conn.execute(sql, params)
-        print(f"Log: Transaction {txn_id} committed locally on Node {self.node_id}.")
+        try:
+            # 1. Create a cursor
+            cursor = self.db_conn.cursor()
+            # 2. Execute the INSERT statement
+            cursor.execute(sql, params)
+            # 3. CRITICAL: Commit the transaction to save the log entry
+            self.db_conn.commit() 
+            cursor.close()
+            print(f"Log: Transaction {txn_id} committed successfully on Node {self.node_id} (LOG SAVED).")
+        except Exception as e:
+            print(f"FATAL LOGGING ERROR for {txn_id}: {e}")
+            # Optional: Rollback if the log failed, though this might cause consistency issues
+            # self.db_conn.rollback()
 
     # --- Step 2: Logging Replication Attempts (Handles Case #1 and #3) ---
 
