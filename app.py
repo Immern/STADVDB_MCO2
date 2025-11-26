@@ -204,11 +204,12 @@ def insert_movie():
     # therefore we proceed to performing the replication
     if res_central['success']:
         LOG_MANAGER.log_local_commit(txn_id, 'INSERT', record_key, new_value)
+        # TODO: is this really supposed to say node 1 or should it be dependent on LOCAL_NODE_ID?
         logs.append(f"Node 1 (Central): Success & Logged")
         LOG_MANAGER.log_replication_attempt(txn_id, target_node_id)
         res_fragment = execute_query(target_node_key, query, params)
         LOG_MANAGER.update_replication_status(txn_id, target_node_id, res_fragment['success'])
-        
+        # TODO: this should be dependent on target_node_key right?
         logs.append(f"{target_node_key} (Fragment): {'Success' if res_fragment['success'] else 'Failed (Log updated)'}")
         
     else:
