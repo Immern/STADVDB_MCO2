@@ -2,9 +2,28 @@ from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
 import mysql.connector
 
+import uuid
+from datetime import datetime
+import json
+from dotenv import load_dotenv
+
+
+load_dotenv()
+LOCAL_NODE_KEY = os.environ.get('LOCAL_NODE_KEY', 'node1') 
+LOCAL_NODE_ID = int(LOCAL_NODE_KEY.replace('node', ''))
+
+# Initialize Log Manager for Local Node
+try:
+    LOCAL_DB_CONN = mysql.connector.connect(**DB_CONFIG[LOCAL_NODE_KEY])
+    LOG_MANAGER = DistributedLogManager(LOCAL_NODE_ID, LOCAL_DB_CONN)
+    print(f"Log Manager initialized for {LOCAL_NODE_KEY}. Recovery startup complete.")
+except Exception as e:
+    print(f"Could not initialize Log Manager or connect to {LOCAL_NODE_KEY}: {e}")
+    LOG_MANAGER = None
+
 # Initialize the Flask application
 app = Flask(__name__)
-CORS(app) # This allows your other nodes/browsers to talk to this API
+CORS(app) # This allows nodes/browsers to talk to this API
 
 # Database configuration
 DB_CONFIG = {
@@ -28,11 +47,16 @@ DB_CONFIG = {
     }
 }
 
+
+
 # --- HELPER FUNCTION: Connect to DB ---
 def get_db_connection(node_key):
     try:
         config = DB_CONFIG[node_key]
         conn = mysql.connector.connect(**config)
+        
+        
+        
         return conn
     except Exception as e:
         print(f"Error connecting to {node_key}: {e}")
@@ -137,14 +161,34 @@ def insert_movie():
     if target_region in ['US', 'JP']: 
         target_node = 'node2'
     
+    # logs for CONSOLE output
     logs = []
-
     res_central = execute_query('node1', query, params)
-    logs.append(f"Node 1 (Central): {'Success' if res_central['success'] else 'Failed ' + res_central.get('error', '')}")
+    
+    # Performed operation in the local was a success,
+    # therefore we proceed to performing the replication
+    if res_central['success']:
+        # 2. Log Local Commit Success (Deferred Modification Log)
+        LOG_MANAGER.log_local_commit(txn_id, 'INSERT', record_key, new_value)
+        logs.append(f"Node 1 (Central): Success & Logged")
 
-    res_fragment = execute_query(target_node, query, params)
-    logs.append(f"{target_node} (Fragment): {'Success' if res_fragment['success'] else 'Failed ' + res_fragment.get('error', '')}")
-
+        # --- STEP 2: REPLICATION TO FRAGMENT ---
+        
+        # 3. Log Replication Intent (REPLICATION_PENDING)
+        LOG_MANAGER.log_replication_attempt(txn_id, target_node_id)
+        
+        # 4. Execute Replication Write to Fragment Node
+        res_fragment = execute_query(target_node_key, query, params)
+        
+        # 5. Update Replication Status (Case #3 logic relies on this status update)
+        LOG_MANAGER.update_replication_status(txn_id, target_node_id, res_fragment['success'])
+        
+        logs.append(f"{target_node_key} (Fragment): {'Success' if res_fragment['success'] else 'Failed (Log updated)'}")
+        
+    else:
+        logs.append(f"Node 1 (Central): Failed - {res_central.get('error', '')}")
+        # Note: In deferred, if the local commit fails, we don't proceed.
+        
     return jsonify({
         "message": "Transaction Processed",
         "logs": logs,
