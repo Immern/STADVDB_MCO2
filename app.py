@@ -9,9 +9,14 @@ from dotenv import load_dotenv
 import os
 
 load_dotenv()
-LOCAL_NODE_KEY = os.environ.get('LOCAL_NODE_KEY', 'node1') 
-LOCAL_NODE_ID = int(LOCAL_NODE_KEY.replace('node', ''))
-
+try:
+    LOCAL_NODE_KEY = os.environ.get('LOCAL_NODE_KEY', 'node1') 
+    LOCAL_NODE_ID = int(LOCAL_NODE_KEY.replace('node', ''))
+    print(f"Local Node Key: {LOCAL_NODE_KEY}, ID: {LOCAL_NODE_ID}")
+except Exception as e:
+    print(f"Error determining local node from environment: {e}")
+    LOCAL_NODE_KEY = 'node3'
+    LOCAL_NODE_ID = 3
 # Initialize Log Manager for Local Node
 try:
     LOCAL_DB_CONN = mysql.connector.connect(**DB_CONFIG[LOCAL_NODE_KEY])
