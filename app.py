@@ -7,6 +7,28 @@ from datetime import datetime
 import json
 from dotenv import load_dotenv
 import os
+from log_manager import DistributedLogManager
+
+DB_CONFIG = {
+    'node1': {
+        'host': '10.2.14.84', 
+        'user': 'admin',
+        'password': 'poginiallen',     
+        'database': 'mco2_ddb'       
+    },
+    'node2': {
+        'host': '10.2.14.85',   
+        'user': 'admin',
+        'password': 'poginiallen',
+        'database': 'mco2_ddb'
+    },
+    'node3': {
+        'host': '10.2.14.86',   
+        'user': 'admin',
+        'password': 'poginiallen',
+        'database': 'mco2_ddb'
+    }
+}
 
 load_dotenv()
 try:
@@ -29,28 +51,6 @@ except Exception as e:
 # Initialize the Flask application
 app = Flask(__name__)
 CORS(app) # This allows nodes/browsers to talk to this API
-
-# Database configuration
-DB_CONFIG = {
-    'node1': {
-        'host': '10.2.14.84', 
-        'user': 'admin',
-        'password': 'poginiallen',     
-        'database': 'mco2_ddb'      
-    },
-    'node2': {
-        'host': '10.2.14.85',  
-        'user': 'admin',
-        'password': 'poginiallen',
-        'database': 'mco2_ddb'
-    },
-    'node3': {
-        'host': '10.2.14.86',  
-        'user': 'admin',
-        'password': 'poginiallen',
-        'database': 'mco2_ddb'
-    }
-}
 
 
 
