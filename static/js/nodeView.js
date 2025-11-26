@@ -1,35 +1,10 @@
-let currentPage = 1;
-let totalRows = 0;
-const ROWS_PER_PAGE = 100;
-
-async function loadNodeData(nodeNumber, page = 1) {
+async function loadNodeData(nodeNumber) {
     try {
-        // Get filter values
-        const titleIdFilter = document.getElementById('filter-titleid').value;
-        const titleFilter = document.getElementById('filter-title').value;
-        const regionFilter = document.getElementById('filter-region').value;
-
-        // Build query parameters
-        const params = new URLSearchParams({
-            page: page,
-            limit: ROWS_PER_PAGE
-        });
-
-        if (titleIdFilter) params.append('titleId', titleIdFilter);
-        if (titleFilter) params.append('title', titleFilter);
-        if (regionFilter) params.append('region', regionFilter);
-
         // Fetch movies from backend
-        const response = await fetch(`/movies?${params.toString()}`);
-        const result = await response.json();
+        const response = await fetch('/movies');
+        const data = await response.json();
         
-        console.log('Loaded data for node:', nodeNumber, result);
-        
-        // Update total rows count
-        totalRows = result.total || result.data?.length || 0;
-        document.getElementById('total-rows').textContent = `Total Rows: ${totalRows}`;
-        
-        const data = result.data || result;
+        console.log('Loaded data for node:', nodeNumber, data);
         
         // Clear existing table rows
         const tableBody = document.getElementById('table-body');
@@ -38,7 +13,6 @@ async function loadNodeData(nodeNumber, page = 1) {
         // Check if data is empty
         if (!data || data.length === 0) {
             tableBody.innerHTML = '<tr><td colspan="9" style="text-align: center;">No data available</td></tr>';
-            document.getElementById('load-more-btn').style.display = 'none';
             return;
         }
         
@@ -55,20 +29,12 @@ async function loadNodeData(nodeNumber, page = 1) {
                 <td title="${movie.attributes || 'N/A'}">${movie.attributes || 'N/A'}</td>
                 <td>${movie.isOriginalTitle == 1 ? 'Yes' : 'No'}</td>
                 <td>
-                    <button onclick="openEditModal('${movie.titleId}', '${escapeHtml(movie.title)}')">Edit</button>
+                    <button onclick="editRow('${movie.titleId}')">Edit</button>
                     <button class="delete-button" onclick="deleteRow('${movie.titleId}')">Delete</button>
                 </td>
             `;
             tableBody.appendChild(row);
         });
-
-        // Show/hide load more button
-        const loadMoreBtn = document.getElementById('load-more-btn');
-        if (data.length >= ROWS_PER_PAGE) {
-            loadMoreBtn.style.display = 'block';
-        } else {
-            loadMoreBtn.style.display = 'none';
-        }
         
     } catch (error) {
         console.error('Error loading data:', error);
@@ -77,19 +43,26 @@ async function loadNodeData(nodeNumber, page = 1) {
     }
 }
 
-function escapeHtml(text) {
-    if (!text) return '';
-    return text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-}
+function filterTable() {
+    const searchValue = document.getElementById('search-bar').value.toLowerCase();
+    const table = document.getElementById('data-table');
+    const rows = table.getElementsByTagName('tr');
 
-function loadMoreRows() {
-    currentPage++;
-    loadNodeData(currentNode, currentPage);
-}
+    for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        const cells = row.getElementsByTagName('td');
+        let found = false;
 
-function applyFilters() {
-    currentPage = 1;
-    loadNodeData(currentNode, currentPage);
+        for (let j = 0; j < cells.length; j++) {
+            const cell = cells[j];
+            if (cell.textContent.toLowerCase().includes(searchValue)) {
+                found = true;
+                break;
+            }
+        }
+
+        row.style.display = found ? '' : 'none';
+    }
 }
 
 function openInsertModal() {
@@ -100,7 +73,6 @@ function closeInsertModal() {
     document.getElementById('insert-modal').classList.remove('active');
     
     // Clear all form fields
-    document.getElementById('insert-titleid').value = '';
     document.getElementById('ordering').value = '';
     document.getElementById('title-name').value = '';
     document.getElementById('title-region').value = '';
@@ -112,7 +84,6 @@ function closeInsertModal() {
 
 async function submitInsert() {
     // Get all form values
-    const titleId = document.getElementById('insert-titleid').value;
     const ordering = document.getElementById('ordering').value;
     const titleName = document.getElementById('title-name').value;
     const titleRegion = document.getElementById('title-region').value;
@@ -122,20 +93,20 @@ async function submitInsert() {
     const isOriginal = document.getElementById('is-original').value;
 
     // Validate required fields
-    if (!titleId || !ordering || !titleName || !titleRegion || !language || !types) {
+    if (!ordering || !titleName || !titleRegion || !language || !types) {
         alert('Please fill in all required fields (marked with *)');
         return;
     }
 
     // Prepare the Payload
     const payload = {
-        titleId: titleId,
+        titleId: "tt" + Math.floor(Math.random() * 10000000), // Random ID
         ordering: parseInt(ordering),
         title: titleName,
         region: titleRegion,
         language: language,
         types: types,
-        attributes: attributes || null,
+        attributes: attributes || 'N/A',
         isOriginalTitle: parseInt(isOriginal)
     };
 
@@ -155,7 +126,6 @@ async function submitInsert() {
         
         // Refresh Data
         closeInsertModal();
-        currentPage = 1;
         loadNodeData(currentNode);
 
     } catch (error) {
@@ -164,58 +134,10 @@ async function submitInsert() {
     }
 }
 
-function openEditModal(titleId, currentTitle) {
-    // Unescape the title
-    currentTitle = currentTitle.replace(/\\'/g, "'");
-    
-    document.getElementById('edit-modal').classList.add('active');
-    document.getElementById('edit-titleid').value = titleId;
-    document.getElementById('edit-title').value = currentTitle;
-}
-
-function closeEditModal() {
-    document.getElementById('edit-modal').classList.remove('active');
-    document.getElementById('edit-titleid').value = '';
-    document.getElementById('edit-title').value = '';
-}
-
-async function submitEdit() {
-    const titleId = document.getElementById('edit-titleid').value;
-    const newTitle = document.getElementById('edit-title').value;
-
-    if (!newTitle) {
-        alert('Please enter a title');
-        return;
-    }
-
-    const payload = {
-        titleId: titleId,
-        title: newTitle,
-        ordering: 1 // Required by backend but not changed
-    };
-
-    console.log('Updating:', payload);
-
-    try {
-        const response = await fetch('/update', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-
-        const result = await response.json();
-        
-        // Show Feedback
-        alert(`Update Status:\n${result.logs.join('\n')}`);
-        
-        // Refresh Data
-        closeEditModal();
-        loadNodeData(currentNode);
-
-    } catch (error) {
-        console.error("Update failed:", error);
-        alert("Failed to update record. Check console for details.");
-    }
+function editRow(titleId) {
+    console.log('Editing row:', titleId);
+    alert(`Edit functionality for row ${titleId} - TODO: Implement`);
+    // TODO: Implement edit functionality
 }
 
 async function deleteRow(titleId) {
@@ -244,27 +166,13 @@ async function deleteRow(titleId) {
     }
 }
 
-function simulateConcurrency() {
-    alert('Simulate Concurrency - Feature coming soon!\nThis will test concurrent transactions across nodes.');
-    // TODO: Implement concurrency simulation
-}
-
-// Close modals when clicking outside - wait for DOM to load
+// Close modal when clicking outside - wait for DOM to load
 document.addEventListener('DOMContentLoaded', function() {
-    const insertModal = document.getElementById('insert-modal');
-    if (insertModal) {
-        insertModal.addEventListener('click', function(e) {
+    const modal = document.getElementById('insert-modal');
+    if (modal) {
+        modal.addEventListener('click', function(e) {
             if (e.target === this) {
                 closeInsertModal();
-            }
-        });
-    }
-
-    const editModal = document.getElementById('edit-modal');
-    if (editModal) {
-        editModal.addEventListener('click', function(e) {
-            if (e.target === this) {
-                closeEditModal();
             }
         });
     }
