@@ -171,14 +171,25 @@ button:hover {
     background-color: #5a6268;
 }
 
-.search-insert-section {
+/* =======================
+   FILTER SECTION
+   ======================= */
+.filter-section {
     display: flex;
     gap: 10px;
     margin-bottom: 20px;
+    padding: 15px;
+    background-color: #f9f9f9;
+    border-radius: 4px;
+    align-items: flex-end;
 }
 
-.search-bar {
+.filter-section .form-group {
     flex: 1;
+}
+
+.filter-section input {
+    width: 100%;
     padding: 8px 12px;
     border: 1px solid #ddd;
     border-radius: 4px;
@@ -186,7 +197,7 @@ button:hover {
 }
 
 /* =======================
-   INSERT BUTTON
+   BUTTONS
    ======================= */
 .insert-button {
     background-color: #28a745;
@@ -196,45 +207,54 @@ button:hover {
     background-color: #218838;
 }
 
-/* =======================
-   TABLE STYLING (FIXED)
-   ======================= */
-
-/* Wrap table for scrolling */
-.table-container {
-    overflow-x: auto;
-    margin-top: 20px;
+.simulate-button {
+    background-color: #ffc107;
+    color: #000;
 }
 
-/* Actual table */
+.simulate-button:hover {
+    background-color: #e0a800;
+}
+
+.delete-button {
+    background-color: #dc3545;
+    margin-left: 5px;
+}
+
+.delete-button:hover {
+    background-color: #c82333;
+}
+
+/* =======================
+   TABLE STYLING
+   ======================= */
+
 .data-table {
     width: 100%;
     border-collapse: collapse;
-    table-layout: fixed; /* ensures header = body width alignment */
+    table-layout: fixed;
+    margin-top: 20px;
 }
 
-/* Cells */
 .data-table th,
 .data-table td {
-    padding: 6px 8px;       /* smaller padding */
-    font-size: 13px;        /* smaller fonts */
+    padding: 6px 8px;
+    font-size: 13px;
     line-height: 1.2;
-    word-wrap: break-word;  /* breaks long text */
-    white-space: normal;    /* allows wrapping */
+    word-wrap: break-word;
+    white-space: normal;
     border-bottom: 1px solid #ddd;
 }
 
-/* Header */
 .data-table th {
     background-color: #f8f9fa;
     color: #333;
     font-weight: bold;
     overflow: visible;
     text-overflow: initial;
-    white-space: normal; /* wraps long column names */
+    white-space: normal;
 }
 
-/* Hover */
 .data-table tr:hover {
     background-color: #f5f5f5;
 }
@@ -295,6 +315,16 @@ button:hover {
     font-family: Arial, sans-serif;
 }
 
+.modal-body textarea {
+    min-height: 60px;
+    resize: vertical;
+}
+
+.modal-body input:disabled {
+    background-color: #e9ecef;
+    cursor: not-allowed;
+}
+
 /* Form Row */
 .form-row {
     display: grid;
@@ -306,6 +336,7 @@ button:hover {
     display: flex;
     gap: 10px;
     justify-content: flex-end;
+    margin-top: 20px;
 }
 
 .cancel-button {
@@ -314,13 +345,4 @@ button:hover {
 
 .cancel-button:hover {
     background-color: #5a6268;
-}
-
-.delete-button {
-    background-color: #dc3545;
-    margin-left: 5px;
-}
-
-.delete-button:hover {
-    background-color: #c82333;
 }
