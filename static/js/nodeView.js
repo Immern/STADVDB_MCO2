@@ -15,12 +15,15 @@ async function loadNodeData(nodeNumber) {
 async function fetchMovies() {
     try {
         // Build query parameters
+        const activeNode = currentNode || 1;
+
         const params = new URLSearchParams({
             offset: currentOffset,
             limit: currentLimit,
             titleId: currentFilters.titleId,
             title: currentFilters.title,
-            region: currentFilters.region
+            region: currentFilters.region,
+            node: 'node${activeNode}'
         });
 
         // Fetch movies from backend

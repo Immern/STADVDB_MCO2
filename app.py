@@ -116,44 +116,65 @@ def get_movies():
     offset = int(request.args.get('offset', 0))
     limit = int(request.args.get('limit', 100))
     
-    # TODO: Implement filter parameters for Read transactions
+    # Filter parameters
     title_id = request.args.get('titleId', '')
     title = request.args.get('title', '')
     region = request.args.get('region', '')
+
+    # Node selection
+    requested_node = request.args.get('node', 'node1')
+
+    # Routing logic
+    # - If filter is applied, node 1 will be searched
+    has_filters = (title_id or title or region)
     
-    # Read from Node 1 (Central)
-    conn = get_db_connection('node1')
+    if has_filters:
+        target_node = 'node1' # Search everything
+    else:
+        target_node = requested_node # Browse specific node
+        
+    # Safety: Check if node exists in config
+    if target_node not in DB_CONFIG:
+        target_node = 'node1'
+
+    # Connect to DB, read from node
+    conn = get_db_connection(target_node)
+
     if not conn:
-        return jsonify({"error": "Central Node Offline"}), 500
+        return jsonify({"error": f"{target_node} is Offline"}), 500
     
     cursor = conn.cursor(dictionary=True)
     
-    # TODO: Build dynamic query based on filter parameters
+    # Dynamic query based on filter parameters
     # Base query
-    query = "SELECT * FROM movies WHERE 1=1"
+    where_clause = " WHERE 1=1" 
     params = []
     
-    # TODO: Add filter conditions
-    # if title_id:
-    #     query += " AND titleId LIKE %s"
-    #     params.append(f"%{title_id}%")
-    # if title:
-    #     query += " AND title LIKE %s"
-    #     params.append(f"%{title}%")
-    # if region:
-    #     query += " AND region = %s"
-    #     params.append(region)
+    if title_id:
+        where_clause += " AND titleId LIKE %s"
+        params.append(f"%{title_id}%")
+        
+    if title:
+        where_clause += " AND title LIKE %s"
+        params.append(f"%{title}%")
+        
+    if region:
+        where_clause += " AND region LIKE %s"
+        params.append(f"%{region}%")
     
-    # Add pagination
-    query += " LIMIT %s OFFSET %s"
-    params.extend([limit, offset])
-    
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
-    
-    # Get total count for pagination
-    cursor.execute("SELECT COUNT(*) as total FROM movies")
+    # Get Total Count for Pagination
+    # Run the count query with the same filters to get correct page numbers
+    count_query = f"SELECT COUNT(*) as total FROM movies {where_clause}"
+    cursor.execute(count_query, params)
     total_count = cursor.fetchone()['total']
+    
+    # Get Actual Data
+    data_query = f"SELECT * FROM movies {where_clause} LIMIT %s OFFSET %s"
+    # Add limit/offset to the parameters list
+    data_params = params + [limit, offset]
+    
+    cursor.execute(data_query, data_params)
+    rows = cursor.fetchall()
     
     conn.close()
     
@@ -161,7 +182,8 @@ def get_movies():
         "data": rows,
         "total": total_count,
         "offset": offset,
-        "limit": limit
+        "limit": limit,
+        "source_node": target_node
     })
 
 # ROUTE: Insert
