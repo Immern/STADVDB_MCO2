@@ -51,6 +51,12 @@ h1 {
     color: #555;
 }
 
+.form-group small {
+    font-size: 12px;
+    color: #666;
+    margin-top: 4px;
+}
+
 select {
     padding: 8px 12px;
     border: 1px solid #ddd;
@@ -67,10 +73,19 @@ button {
     border-radius: 4px;
     cursor: pointer;
     font-size: 14px;
+    transition: background-color 0.2s;
 }
 
 button:hover {
     background-color: #0056b3;
+}
+
+.secondary-button {
+    background-color: #6c757d;
+}
+
+.secondary-button:hover {
+    background-color: #5a6268;
 }
 
 /* =======================
@@ -89,11 +104,13 @@ button:hover {
     padding: 20px;
     cursor: pointer;
     transition: all 0.3s;
+    background-color: white;
 }
 
 .node-card:hover {
     border-color: #007bff;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    box-shadow: 0 4px 12px rgba(0,123,255,0.2);
+    transform: translateY(-2px);
 }
 
 .node-header {
@@ -101,6 +118,8 @@ button:hover {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #eee;
 }
 
 .node-title {
@@ -141,6 +160,7 @@ button:hover {
 
 .info-label {
     font-weight: bold;
+    color: #333;
 }
 
 /* =======================
@@ -171,18 +191,48 @@ button:hover {
     background-color: #5a6268;
 }
 
-.search-insert-section {
-    display: flex;
-    gap: 10px;
+/* Row Count Display */
+.row-count-display {
+    background-color: #e7f3ff;
+    padding: 12px 15px;
+    border-radius: 4px;
     margin-bottom: 20px;
+    font-size: 14px;
+    color: #004085;
+    font-weight: 500;
+    border-left: 4px solid #007bff;
 }
 
-.search-bar {
+/* Filter Section */
+.filter-section {
+    display: flex;
+    gap: 15px;
+    align-items: flex-end;
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: #f9f9f9;
+    border-radius: 4px;
+    flex-wrap: wrap;
+}
+
+.filter-section .form-group {
     flex: 1;
+    min-width: 150px;
+}
+
+.filter-section input {
     padding: 8px 12px;
     border: 1px solid #ddd;
     border-radius: 4px;
     font-size: 14px;
+    width: 100%;
+}
+
+/* Action Buttons Section */
+.action-buttons {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
 }
 
 /* =======================
@@ -196,8 +246,17 @@ button:hover {
     background-color: #218838;
 }
 
+/* Concurrency Button */
+.concurrency-button {
+    background-color: #fd7e14;
+}
+
+.concurrency-button:hover {
+    background-color: #e8590c;
+}
+
 /* =======================
-   TABLE STYLING (FIXED)
+   TABLE STYLING
    ======================= */
 
 /* Wrap table for scrolling */
@@ -210,18 +269,19 @@ button:hover {
 .data-table {
     width: 100%;
     border-collapse: collapse;
-    table-layout: fixed; /* ensures header = body width alignment */
+    table-layout: fixed;
 }
 
 /* Cells */
 .data-table th,
 .data-table td {
-    padding: 6px 8px;       /* smaller padding */
-    font-size: 13px;        /* smaller fonts */
-    line-height: 1.2;
-    word-wrap: break-word;  /* breaks long text */
-    white-space: normal;    /* allows wrapping */
+    padding: 8px 10px;
+    font-size: 13px;
+    line-height: 1.4;
+    word-wrap: break-word;
+    white-space: normal;
     border-bottom: 1px solid #ddd;
+    text-align: left;
 }
 
 /* Header */
@@ -229,14 +289,37 @@ button:hover {
     background-color: #f8f9fa;
     color: #333;
     font-weight: bold;
-    overflow: visible;
-    text-overflow: initial;
-    white-space: normal; /* wraps long column names */
+    position: sticky;
+    top: 0;
+    z-index: 10;
 }
 
 /* Hover */
-.data-table tr:hover {
+.data-table tbody tr:hover {
     background-color: #f5f5f5;
+}
+
+/* Action buttons in table */
+.data-table button {
+    padding: 5px 10px;
+    font-size: 12px;
+    margin-right: 5px;
+}
+
+/* Load More Section */
+.load-more-section {
+    margin-top: 20px;
+    text-align: center;
+}
+
+#load-more-btn {
+    background-color: #17a2b8;
+    padding: 12px 30px;
+    font-size: 15px;
+}
+
+#load-more-btn:hover {
+    background-color: #138496;
 }
 
 /* =======================
@@ -270,14 +353,18 @@ button:hover {
     max-width: 600px;
     max-height: 90vh;
     overflow-y: auto;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
 }
 
 .modal-header {
     margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #f0f0f0;
 }
 
 .modal-header h2 {
     color: #333;
+    font-size: 22px;
 }
 
 .modal-body .form-group {
@@ -288,11 +375,30 @@ button:hover {
 .modal-body select,
 .modal-body textarea {
     width: 100%;
-    padding: 8px 12px;
+    padding: 10px 12px;
     border: 1px solid #ddd;
     border-radius: 4px;
     font-size: 14px;
     font-family: Arial, sans-serif;
+    transition: border-color 0.2s;
+}
+
+.modal-body input:focus,
+.modal-body select:focus,
+.modal-body textarea:focus {
+    outline: none;
+    border-color: #007bff;
+}
+
+.modal-body input:disabled {
+    background-color: #f5f5f5;
+    cursor: not-allowed;
+    color: #666;
+}
+
+.modal-body textarea {
+    min-height: 80px;
+    resize: vertical;
 }
 
 /* Form Row */
@@ -306,6 +412,9 @@ button:hover {
     display: flex;
     gap: 10px;
     justify-content: flex-end;
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px solid #f0f0f0;
 }
 
 .cancel-button {
@@ -323,4 +432,39 @@ button:hover {
 
 .delete-button:hover {
     background-color: #c82333;
+}
+
+/* =======================
+   RESPONSIVE DESIGN
+   ======================= */
+@media (max-width: 768px) {
+    .settings-section {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+    
+    .nodes-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .filter-section {
+        flex-direction: column;
+    }
+    
+    .action-buttons {
+        flex-direction: column;
+    }
+    
+    .data-table {
+        font-size: 12px;
+    }
+    
+    .data-table th,
+    .data-table td {
+        padding: 6px 8px;
+    }
 }
