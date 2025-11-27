@@ -8,7 +8,7 @@ import json
 from dotenv import load_dotenv
 import os
 from log_manager import DistributedLogManager
-from db_helpers import get_db_connection    
+from db_helpers import get_db_connection, DB_CONFIG    
 
 load_dotenv()
 try:
