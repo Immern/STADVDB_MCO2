@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 import json
+from db_helpers import get_db_connection
 
 class DistributedLogManager:
     def __init__(self, node_id, db_connection):
@@ -85,42 +86,14 @@ class DistributedLogManager:
     # --- Step 3: Global Failure Recovery Logic (Handles Case #2 and #4) ---
 
     def recover_missed_writes(self, last_known_commit_time):
-        """
-        Simulates the recovery process for a node that missed transactions 
-        (Node 1 in Case #2, Node 2/3 in Case #4).
-        
-        It would typically query the *surviving* node(s) for all committed 
-        logs after `last_known_commit_time`.
-        """
-        print(f"\n--- Recovery Operation Started for Node {self.node_id} ---")
-        
-        # 1. Redo Local Changes (If node crashed after log but before main DB write)
-        # In deferred, we just check logs with status 'LOCAL_COMMIT' but not yet applied
-        # and re-apply the changes (REDO).
-        print("1. Performing Local REDO (applying committed changes from log to main DB)...")
-        # SQL to find: logs where LOCAL_COMMIT but no corresponding entry in main DB...
-        
-        # 2. Synchronize Missed Remote Changes (The core of Case #2 & #4)
-        print(f"2. Requesting missed replicated transactions from active nodes since {last_known_commit_time}...")
-        
-        # **SIMULATION:** In a real implementation, this would involve a network call.
-        # Here we simulate fetching the required log entries (e.g., from Node 1's log).
-        
-        # A successful transaction on Node X needs to be applied on Node Y.
-        # The logs from active nodes will contain entries where 'status' is 'LOCAL_COMMIT' 
-        # (or 'REPLICATION_SUCCESS') and 'log_timestamp' > last_known_commit_time.
-        
         missed_logs = self._simulate_fetch_missed_logs(last_known_commit_time)
-        
-        if not missed_logs:
-            print("   -> No missed transactions found. System is up to date.")
-            return
 
         for log in missed_logs:
-            # Re-apply the transaction's new_value to the main DB
-            # The 'new_value' is the After Image, used for REDO.
-            print(f"   -> REDO: Applying missed {log['operation_type']} for record {log['record_key']} (Txn ID: {log['transaction_id']})")
-            # self._apply_redo_to_main_db(log) 
+            print(f"   -> REDO: Applying missed {log['operation_type']} for record {log['record_key']}...")
+            
+            # --- CALLING THE NEW REDO HELPER ---
+            if self._apply_redo_to_main_db(log):
+                print("      -> Successfully applied. Must acknowledge back to Node 1.")
             
         print(f"--- Recovery for Node {self.node_id} Complete ---")
 
@@ -143,7 +116,70 @@ class DistributedLogManager:
                 'log_timestamp': datetime.now()
             }]
         return []
+    
+    def _apply_redo_to_main_db(self, log_entry):
+        """
+        Applies the 'After Image' (new_value) from a log entry to the main 
+        database of the local node (REDO operation).
+        
+        Args:
+            log_entry (dict): A single row fetched from the transaction_logs table.
+        """
+        op_type = log_entry['operation_type']
+        key = log_entry['record_key']
+        
+        # Load the JSON data that represents the state AFTER the change
+        # Note: new_value is stored as a JSON string in the log table
+        new_data = json.loads(log_entry['new_value']) 
 
+        cursor = self.db_conn.cursor()
+
+        try:
+            if op_type == 'INSERT':
+                # --- REDO INSERT ---
+                columns = ['titleId', 'ordering', 'title', 'region', 'language', 'types', 'attributes', 'isOriginalTitle']
+                placeholders = ', '.join(['%s'] * len(columns))
+                column_names = ', '.join(columns)
+
+                # Ensure params are ordered according to the 'columns' list
+                params = tuple(new_data.get(col) for col in columns)
+
+                query = f"""
+                    INSERT INTO movies 
+                    ({column_names}) 
+                    VALUES ({placeholders})
+                    ON DUPLICATE KEY UPDATE title=VALUES(title) 
+                    -- ^ Ensures idempotent operation: if the row already exists (e.g., due to crash), it updates instead of failing.
+                """
+                cursor.execute(query, params)
+
+            elif op_type == 'UPDATE':
+                # --- REDO UPDATE ---
+                # Dynamically build SET clause for all updated fields
+                set_clauses = [f"{col} = %s" for col in new_data.keys() if col != 'titleId']
+                
+                # Parameters: values for SET clause, followed by the WHERE clause value (key)
+                params = tuple(new_data[col] for col in new_data.keys() if col != 'titleId') + (key,)
+                
+                query = f"UPDATE movies SET {', '.join(set_clauses)} WHERE titleId = %s"
+                
+                cursor.execute(query, params)
+
+            elif op_type == 'DELETE':
+                # --- REDO DELETE ---
+                query = "DELETE FROM movies WHERE titleId = %s"
+                cursor.execute(query, (key,))
+
+            self.db_conn.commit()
+            print(f"REDO Success: {op_type} for record {key} applied to main DB.")
+            return True
+            
+        except Exception as e:
+            self.db_conn.rollback()
+            print(f"REDO FAILURE: {op_type} for record {key} failed: {e}")
+            return False
+        finally:
+            cursor.close()
 # --- Example Usage and Simulation ---
 
 def simulate_failure_recovery(log_manager_central, log_manager_fabric):
@@ -174,8 +210,8 @@ def simulate_failure_recovery(log_manager_central, log_manager_fabric):
     # The recovery logic here would look at the logs of N2 and N3 to find txn2_id and re-apply it.
 
 # Initialize the log managers (assuming they connect to their respective DBs)
-log_manager_N1 = DistributedLogManager(node_id=1, db_connection=None) 
-log_manager_N2 = DistributedLogManager(node_id=2, db_connection=None)
+log_manager_N1 = DistributedLogManager(node_id=1, db_connection=get_db_connection('node1'))
+log_manager_N2 = DistributedLogManager(node_id=2, db_connection=get_db_connection('node2'))
 
 # Run the simulation
 simulate_failure_recovery(log_manager_N1, log_manager_N2)

@@ -8,27 +8,7 @@ import json
 from dotenv import load_dotenv
 import os
 from log_manager import DistributedLogManager
-
-DB_CONFIG = {
-    'node1': {
-        'host': '10.2.14.84', 
-        'user': 'admin',
-        'password': 'poginiallen',     
-        'database': 'mco2_ddb'       
-    },
-    'node2': {
-        'host': '10.2.14.85',   
-        'user': 'admin',
-        'password': 'poginiallen',
-        'database': 'mco2_ddb'
-    },
-    'node3': {
-        'host': '10.2.14.86',   
-        'user': 'admin',
-        'password': 'poginiallen',
-        'database': 'mco2_ddb'
-    }
-}
+from db_helpers import get_db_connection    
 
 load_dotenv()
 try:
