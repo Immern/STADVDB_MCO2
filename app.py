@@ -2,37 +2,66 @@ from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
 import mysql.connector
 
-# Initialize the Flask application
-app = Flask(__name__)
-CORS(app) # This allows your other nodes/browsers to talk to this API
+import uuid
+from datetime import datetime
+import json
+from dotenv import load_dotenv
+import os
+from log_manager import DistributedLogManager
 
-# Database configuration
 DB_CONFIG = {
     'node1': {
         'host': '10.2.14.84', 
         'user': 'admin',
         'password': 'poginiallen',     
-        'database': 'mco2_ddb'      
+        'database': 'mco2_ddb'       
     },
     'node2': {
-        'host': '10.2.14.85',  
+        'host': '10.2.14.85',   
         'user': 'admin',
         'password': 'poginiallen',
         'database': 'mco2_ddb'
     },
     'node3': {
-        'host': '10.2.14.86',  
+        'host': '10.2.14.86',   
         'user': 'admin',
         'password': 'poginiallen',
         'database': 'mco2_ddb'
     }
 }
 
+load_dotenv()
+try:
+    LOCAL_NODE_KEY = os.environ.get('LOCAL_NODE_KEY', 'node1') 
+    LOCAL_NODE_ID = int(LOCAL_NODE_KEY.replace('node', ''))
+    print(f"Local Node Key: {LOCAL_NODE_KEY}, ID: {LOCAL_NODE_ID}")
+except Exception as e:
+    print(f"Error determining local node from environment: {e}")
+    LOCAL_NODE_KEY = 'node3'
+    LOCAL_NODE_ID = 3
+# Initialize Log Manager for Local Node
+try:
+    LOCAL_DB_CONN = mysql.connector.connect(**DB_CONFIG[LOCAL_NODE_KEY])
+    LOG_MANAGER = DistributedLogManager(LOCAL_NODE_ID, LOCAL_DB_CONN)
+    print(f"Log Manager initialized for {LOCAL_NODE_KEY}. Recovery startup complete.")
+except Exception as e:
+    print(f"Could not initialize Log Manager or connect to {LOCAL_NODE_KEY}: {e}")
+    LOG_MANAGER = None
+
+# Initialize the Flask application
+app = Flask(__name__)
+CORS(app) # This allows nodes/browsers to talk to this API
+
+
+
 # --- HELPER FUNCTION: Connect to DB ---
 def get_db_connection(node_key):
     try:
         config = DB_CONFIG[node_key]
         conn = mysql.connector.connect(**config)
+        
+        
+        
         return conn
     except Exception as e:
         print(f"Error connecting to {node_key}: {e}")
@@ -110,8 +139,27 @@ def get_movies():
 # ROUTE: Insert
 @app.route('/insert', methods=['POST'])
 def insert_movie():
+    # Ensure the LOG_MANAGER is available (from global instantiation)
+    if not LOG_MANAGER:
+        return jsonify({"error": "Distributed Log Manager not initialized."}), 500
+
     data = request.json
 
+    txn_id = str(uuid.uuid4()) 
+    record_key = data.get('titleId')
+    
+    new_value = {
+        'titleId': record_key,
+        'ordering': data.get('ordering'),
+        'title': data.get('title'),
+        'region': data.get('region'),
+        'language': data.get('language'),
+        'types': data.get('types'),
+        'attributes': data.get('attributes'),
+        'isOriginalTitle': data.get('isOriginalTitle')
+    }
+    # ------------------------------------------------------------------
+    
     params = (
         data.get('titleId'),
         data.get('ordering'),
@@ -130,94 +178,159 @@ def insert_movie():
     """
 
     # Determine Partition (Node 2 vs Node 3)
-    # US and JP go to Node 2, the rest to Node 3
     target_region = data.get('region')
-    target_node = 'node3' 
+    target_node_key = 'node3' 
+    target_node_id = 3 # Use integer ID for the log
     
     if target_region in ['US', 'JP']: 
-        target_node = 'node2'
+        target_node_key = 'node2'
+        target_node_id = 2
     
+    # logs for CONSOLE output
     logs = []
-
-    res_central = execute_query('node1', query, params)
-    logs.append(f"Node 1 (Central): {'Success' if res_central['success'] else 'Failed ' + res_central.get('error', '')}")
-
-    res_fragment = execute_query(target_node, query, params)
-    logs.append(f"{target_node} (Fragment): {'Success' if res_fragment['success'] else 'Failed ' + res_fragment.get('error', '')}")
-
+    res_central = execute_query('node1', query, params) 
+    
+    # Performed operation in the local was a success,
+    # therefore we proceed to performing the replication
+    if res_central['success']:
+        LOG_MANAGER.log_local_commit(txn_id, 'INSERT', record_key, new_value)
+        logs.append(f"Node 1 (Central): Success & Logged")
+        LOG_MANAGER.log_replication_attempt(txn_id, target_node_id)
+        res_fragment = execute_query(target_node_key, query, params)
+        LOG_MANAGER.update_replication_status(txn_id, target_node_id, res_fragment['success'])
+        logs.append(f"{target_node_key} (Fragment): {'Success' if res_fragment['success'] else 'Failed (Log updated)'}")
+        
+    else:
+        # Local commit failed. Transaction is considered aborted. No log entry for success is written.
+        logs.append(f"Node 1 (Central): Failed - {res_central.get('error', '')}")
+        
     return jsonify({
         "message": "Transaction Processed",
         "logs": logs,
-        "target_node": target_node
+        "target_node": target_node_key, # Corrected to use target_node_key
+        "txn_id": txn_id # Include txn_id in the response for testing/debugging
     })
 
 # ROUTE: Update
 @app.route('/update', methods=['POST'])
 def update_movie():
+    # Ensure the LOG_MANAGER is available (from global instantiation)
+    if not LOG_MANAGER:
+        return jsonify({"error": "Distributed Log Manager not initialized."}), 500
+
     data = request.json
     
-    # 1. Extract Data
-    # We assume we update attributes other than titleId (Primary Key)
+    # 1. Transaction Setup & Log Data Preparation
+    txn_id = str(uuid.uuid4()) 
+    record_key = data.get('titleId')
+    
+    # NOTE: In a real system, you would fetch the 'Before Image' (old_value) 
+    # from the database before the update for UNDO operations.
+    # For this system, we only create the 'After Image' for REDO.
+    new_value = {
+        'titleId': record_key,
+        'ordering': data.get('ordering'),
+        'title': data.get('title'),
+        'region': data.get('region'),
+        'language': data.get('language'),
+        'types': data.get('types'),
+        'attributes': data.get('attributes'),
+        'isOriginalTitle': data.get('isOriginalTitle')
+    }
+    
+    # 2. Prepare Query and Parameters
     title_id = data.get('titleId')
     new_title = data.get('title')
     new_ordering = data.get('ordering')
-    
-    # NOTE: If you update 'region', you technically need to Move the data 
-    # from Node 2 to Node 3 (Delete + Insert). 
-    # For this simple implementation, we will assume Region doesn't change 
-    # or we just try to update everywhere.
     
     query = "UPDATE movies SET title = %s, ordering = %s WHERE titleId = %s"
     params = (new_title, new_ordering, title_id)
     
     logs = []
 
-    # 2. Update Central Node (Node 1) - Always
+    # 3. Update Central Node (Node 1) - Always
     res_central = execute_query('node1', query, params)
-    logs.append(f"Node 1 Update: {'Success' if res_central['success'] else 'Failed'}")
     
-    # 3. Update Fragments (Node 2 AND Node 3)
-    # Strategy: Since we might not know which node has it without querying first,
-    # and "Update where ID=X" does nothing if ID doesn't exist, 
-    # we can safely try running the update on both fragment nodes.
-    
-    res_node2 = execute_query('node2', query, params)
-    logs.append(f"Node 2 Update: {'Success' if res_node2['success'] else 'Failed'}")
-    
-    res_node3 = execute_query('node3', query, params)
-    logs.append(f"Node 3 Update: {'Success' if res_node3['success'] else 'Failed'}")
+    if res_central['success']:
+        # Log the successful local commit (Redo log)
+        LOG_MANAGER.log_local_commit(txn_id, 'UPDATE', record_key, new_value)
+        logs.append(f"Node 1 (Central): Success & Logged")
 
+        # 4. Update Fragments (Replication)
+        
+        # Log and attempt update on Node 2
+        LOG_MANAGER.log_replication_attempt(txn_id, 2)
+        res_node2 = execute_query('node2', query, params)
+        LOG_MANAGER.update_replication_status(txn_id, 2, res_node2['success'])
+        logs.append(f"Node 2 Update: {'Success' if res_node2['success'] else 'Failed (Log updated)'}")
+        
+        # Log and attempt update on Node 3
+        LOG_MANAGER.log_replication_attempt(txn_id, 3)
+        res_node3 = execute_query('node3', query, params)
+        LOG_MANAGER.update_replication_status(txn_id, 3, res_node3['success'])
+        logs.append(f"Node 3 Update: {'Success' if res_node3['success'] else 'Failed (Log updated)'}")
+
+    else:
+        # Local commit failed. Transaction is considered aborted.
+        logs.append(f"Node 1 (Central): Failed - {res_central.get('error', '')}")
+        
     return jsonify({
         "message": "Update Processed",
-        "logs": logs
+        "logs": logs,
+        "txn_id": txn_id
     })
-
 # ROUTE: Delete
 @app.route('/delete', methods=['POST'])
 def delete_movie():
+    # Ensure the LOG_MANAGER is available
+    if not LOG_MANAGER:
+        return jsonify({"error": "Distributed Log Manager not initialized."}), 500
+
     data = request.json
     title_id = data.get('titleId')
     
+    # 1. Transaction Setup
+    txn_id = str(uuid.uuid4())
+    
+    # For a DELETE operation, the "After Image" (new_value) is essentially empty 
+    # because the record no longer exists. We pass an empty dict or a marker.
+    new_value = {"action": "DELETE", "titleId": title_id}
+
     query = "DELETE FROM movies WHERE titleId = %s"
     params = (title_id,)
     
     logs = []
 
-    # 1. Delete from Central (Node 1)
+    # 2. Delete from Central (Node 1) - Always First
     res_central = execute_query('node1', query, params)
-    logs.append(f"Node 1 Delete: {'Success' if res_central['success'] else 'Failed'}")
     
-    # 2. Delete from Fragments (Node 2 AND Node 3)
-    # Just like update, we try deleting from both to ensure it's gone everywhere.
-    res_node2 = execute_query('node2', query, params)
-    logs.append(f"Node 2 Delete: {'Success' if res_node2['success'] else 'Failed'}")
+    if res_central['success']:
+        # --- LOGGING STEP A: Local Commit ---
+        # Log that the Primary Node (Node 1) successfully performed the action.
+        # This is the "Point of No Return" for the transaction.
+        LOG_MANAGER.log_local_commit(txn_id, 'DELETE', title_id, new_value)
+        logs.append(f"Node 1 (Central): Success & Logged")
 
-    res_node3 = execute_query('node3', query, params)
-    logs.append(f"Node 3 Delete: {'Success' if res_node3['success'] else 'Failed'}")
+        # --- LOGGING STEP B: Replication to Node 2 ---
+        LOG_MANAGER.log_replication_attempt(txn_id, 2)
+        res_node2 = execute_query('node2', query, params)
+        LOG_MANAGER.update_replication_status(txn_id, 2, res_node2['success'])
+        logs.append(f"Node 2 Delete: {'Success' if res_node2['success'] else 'Failed (Log updated)'}")
+
+        # --- LOGGING STEP C: Replication to Node 3 ---
+        LOG_MANAGER.log_replication_attempt(txn_id, 3)
+        res_node3 = execute_query('node3', query, params)
+        LOG_MANAGER.update_replication_status(txn_id, 3, res_node3['success'])
+        logs.append(f"Node 3 Delete: {'Success' if res_node3['success'] else 'Failed (Log updated)'}")
+
+    else:
+        # If Central Node fails, the whole transaction is aborted.
+        logs.append(f"Node 1 (Central): Failed - {res_central.get('error', '')}")
 
     return jsonify({
         "message": "Delete Processed",
-        "logs": logs
+        "logs": logs,
+        "txn_id": txn_id
     })
 
 if __name__ == '__main__':
