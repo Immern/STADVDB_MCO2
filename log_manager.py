@@ -9,8 +9,6 @@ class DistributedLogManager:
         self._initialize_log_table()
 
     def _initialize_log_table(self):
-        """Creates the transaction_logs table if it doesn't exist."""
-        # Using a simplified SQL statement for demonstration
         sql = """
         CREATE TABLE IF NOT EXISTS transaction_logs (
             log_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -25,13 +23,9 @@ class DistributedLogManager:
             -- but recommended for validation (as discussed previously).
         );
         """
-        # Execute the SQL (omitting actual execution details)
-        # self.db_conn.execute(sql) 
-
-    # --- Step 1: Logging a Local Transaction (Before writing to main DB) ---
+       
 
     def log_local_commit(self, txn_id, op_type, key, new_data):
-        """Logs a successful local transaction before replication."""
         sql = """
         INSERT INTO transaction_logs 
         (transaction_id, log_timestamp, operation_type, record_key, new_value, replication_target, status)
@@ -44,20 +38,16 @@ class DistributedLogManager:
             key,
             json.dumps(new_data)
         )
-        # self.db_conn.execute(sql, params)
+        
+        # Cursor is for tracking the log transactions
         try:
-            # 1. Create a cursor
             cursor = self.db_conn.cursor()
-            # 2. Execute the INSERT statement
             cursor.execute(sql, params)
-            # 3. CRITICAL: Commit the transaction to save the log entry
             self.db_conn.commit() 
             cursor.close()
             print(f"Log: Transaction {txn_id} committed successfully on Node {self.node_id} (LOG SAVED).")
         except Exception as e:
             print(f"FATAL LOGGING ERROR for {txn_id}: {e}")
-            # Optional: Rollback if the log failed, though this might cause consistency issues
-            # self.db_conn.rollback()
 
     # --- Step 2: Logging Replication Attempts (Handles Case #1 and #3) ---
 
@@ -71,7 +61,10 @@ class DistributedLogManager:
         # Fetch the original new_value if needed, but here we just log the intent.
         
         params = (txn_id, datetime.now(), target_node)
-        # self.db_conn.execute(sql, params)
+        cursor = self.db_conn.cursor()
+        cursor.execute(sql, params)
+        self.db_conn.commit()
+        cursor.close()
         print(f"Log: Transaction {txn_id} replication PENDING to Node {target_node}.")
     
     def update_replication_status(self, txn_id, target_node, success=True):
@@ -83,7 +76,10 @@ class DistributedLogManager:
         WHERE transaction_id = %s AND replication_target = %s AND status = 'REPLICATION_PENDING';
         """
         params = (new_status, txn_id, target_node)
-        # self.db_conn.execute(sql, params)
+        cursor = self.db_conn.cursor()
+        cursor.execute(sql, params)
+        self.db_conn.commit()
+        cursor.close()
         print(f"Log: Transaction {txn_id} replication status updated to {new_status} for Node {target_node}.")
 
     # --- Step 3: Global Failure Recovery Logic (Handles Case #2 and #4) ---
