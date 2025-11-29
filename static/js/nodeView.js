@@ -23,7 +23,7 @@ async function fetchMovies() {
             titleId: currentFilters.titleId,
             title: currentFilters.title,
             region: currentFilters.region,
-            node: 'node${activeNode}'
+            node: `node${activeNode}`
         });
 
         // Fetch movies from backend
