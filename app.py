@@ -243,157 +243,6 @@ def get_movies():
         "source_node": source
     })
 
-# # ROUTE: Insert
-# @app.route('/insert', methods=['POST'])
-# def insert_movie():
-#     # Ensure the LOG_MANAGER is available (from global instantiation)
-#     if not LOG_MANAGER:
-#         return jsonify({"error": "Distributed Log Manager not initialized."}), 500
-
-#     data = request.json
-
-#     txn_id = str(uuid.uuid4())
-#     record_key = data.get('titleId')
-
-#     # Prepare the 'new_value' payload for the log (After Image)
-#     new_value = {
-#         'titleId': record_key,
-#         'ordering': data.get('ordering'),
-#         'title': data.get('title'),
-#         'region': data.get('region'),
-#         'language': data.get('language'),
-#         'types': data.get('types'),
-#         'attributes': data.get('attributes'),
-#         'isOriginalTitle': data.get('isOriginalTitle')
-#     }
-#     # ------------------------------------------------------------------
-
-#     # Determine current node
-#     current_node = request.args.get('node', data.get('node', 'node1'))
-
-#     params = (
-#         data.get('titleId'),
-#         data.get('ordering'),
-#         data.get('title'),
-#         data.get('region'),
-#         data.get('language'),
-#         data.get('types'),
-#         data.get('attributes'),
-#         data.get('isOriginalTitle')
-#     )
-
-#     query = """
-#         INSERT INTO movies 
-#         (titleId, ordering, title, region, language, types, attributes, isOriginalTitle) 
-#         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-#     """
-
-#     # Determine Correct Partition
-#     target_region = data.get('region')
-#     correct_fragment_key = 'node3' 
-#     correct_fragment_id = 3
-#     if target_region in ['US', 'JP']: 
-#         correct_fragment_key = 'node2'
-#         correct_fragment_id = 2
-
-#     # logs for CONSOLE output
-#     logs = []
-
-#     # ------------------------------------------------------------------
-#     # NEW PHASE 1 SIMULATION: PREPARE AND READY LOGGING
-#     # ------------------------------------------------------------------
-#     try:
-#         # 1. Coordinator (current_node) logs PREPARE START
-#         LOG_MANAGER.log_prepare_start(txn_id)
-#         logs.append("Phase 1: Coordinator Logged PREPARE START.")
-
-#         # 2. Coordinator (current_node) logs its own READY_COMMIT status
-#         #    (Assuming the transaction logic itself is ready to commit)
-#         LOG_MANAGER.log_ready_status(txn_id, 'INSERT', record_key, new_value)
-#         logs.append("Phase 1: Coordinator Logged READY_COMMIT (Simulated Consensus).")
-        
-#     except Exception as e:
-#         # If the coordinator can't even log READY, the transaction is ABORTED immediately.
-#         logs.append(f"FATAL: Coordinator Log Failure during PREPARE. Aborting: {e}")
-#         # Note: A real system would log GLOBAL_ABORT here.
-#         return jsonify({"message": "Transaction ABORTED due to Log Failure", "logs": logs, "txn_id": txn_id}), 500
-    
-    
-
-
-#     # SCENARIO 1: User is on Node 1 (Central)
-#     if current_node == 'node1':
-#         # 1. "Update central node first"
-#         res_central = execute_query('node1', query, params)
-        
-#         # LOG LOCAL COMMIT on Node 1 (Central)
-#         if res_central['success']:
-#             LOG_MANAGER.log_global_commit(txn_id, 'INSERT', record_key, new_value)
-#             logs.append("Node 1 (Local): Success & Logged")
-
-#             # 2. "Then identify which fragmented node to modify" (Replication)
-#             LOG_MANAGER.log_replication_attempt(txn_id, correct_fragment_id)
-#             res_frag = execute_query(correct_fragment_key, query, params)
-            
-#             # Update Replication Status on Node 1
-#             LOG_MANAGER.update_replication_status(txn_id, correct_fragment_id, res_frag['success'])
-#             logs.append(f"{correct_fragment_key} (Fragment): {'Success' if res_frag['success'] else 'Failed (Log updated)'}")
-#         else:
-#             # Central commit failed. No successful log entry.
-#             logs.append(f"Node 1 (Local): Failed - {res_central.get('error', '')}")
-
-
-#     # SCENARIO 2 & 3: User is on a Fragment (Node 2 or 3)
-#     else:
-#         current_node_id = int(current_node.replace('node', ''))
-        
-#         # Check if the data belongs here
-#         if current_node == correct_fragment_key:
-#             # SCENARIO 2: Data belongs to current node
-            
-#             # 1. "Update current node first"
-#             res_local = execute_query(current_node, query, params)
-            
-#             # LOG LOCAL COMMIT on the Fragment Node
-#             if res_local['success']:
-#                 LOG_MANAGER.log_global_commit(txn_id, 'INSERT', record_key, new_value)
-#                 logs.append(f"{current_node} (Local): Success & Logged")
-                
-#                 # 2. "Then update central node" (Replication)
-#                 LOG_MANAGER.log_replication_attempt(txn_id, 1) # Target is Central Node (ID 1)
-#                 res_central = execute_query('node1', query, params)
-                
-#                 # Update Replication Status on the Fragment Node
-#                 LOG_MANAGER.update_replication_status(txn_id, 1, res_central['success'])
-#                 logs.append(f"Node 1 (Central): {'Success' if res_central['success'] else 'Failed (Log updated)'}")
-#             else:
-#                 logs.append(f"{current_node} (Local): Failed - {res_local.get('error', '')}")
-            
-#         else:
-#             # SCENARIO 3: Data belongs to OTHER fragment
-#             # "Fetch from other fragmented node" (In insert terms: Insert to other fragment)
-#             logs.append(f"{current_node} (Local): Skipped (Data belongs to {correct_fragment_key})")
-            
-#             res_other = execute_query(correct_fragment_key, query, params)
-            
-#             if res_other['success']:
-#                 LOG_MANAGER.log_global_commit(txn_id, 'INSERT', record_key, new_value)
-#                 logs.append(f"{correct_fragment_key} (Remote): Success & Commit Logged on {current_node}")
-                
-#                 LOG_MANAGER.log_replication_attempt(txn_id, 1) 
-#                 res_central = execute_query('node1', query, params)
-                
-#                 LOG_MANAGER.update_replication_status(txn_id, 1, res_central['success'])
-#                 logs.append(f"Node 1 (Central): {'Success' if res_central['success'] else 'Failed (Log updated)'}")
-#             else:
-#                  logs.append(f"{correct_fragment_key} (Remote): Failed - No Log Commit")
-
-#     return jsonify({
-#         "message": "Insert Processed", 
-#         "logs": logs,
-#         "txn_id": txn_id
-#     })
-    
 # ROUTE: Insert (Corrected 2PC Implementation)
 @app.route('/insert', methods=['POST'])
 def insert_movie():
@@ -523,8 +372,9 @@ def insert_movie():
         "logs": logs,
         "txn_id": txn_id
     })
-    
-# ROUTE: Update
+
+
+# ROUTE: Update (Refactored for 2PC)
 @app.route('/update', methods=['POST'])
 def update_movie():
     # Ensure the LOG_MANAGER is available (from global instantiation)
@@ -537,18 +387,16 @@ def update_movie():
     # 1. Transaction Setup & Log Data Preparation
     txn_id = str(uuid.uuid4()) 
     record_key = data.get('titleId')
-    
     title_id = data.get('titleId')
     new_title = data.get('title')
     new_ordering = data.get('ordering')
 
     # Prepare the 'new_value' payload for the log (After Image)
-    # NOTE: You must include all columns being changed for a complete REDO image.
     new_value = {
-        'titleId': record_key, # Key used for WHERE clause
+        'titleId': record_key,
         'ordering': new_ordering,
         'title': new_title,
-        # Other potentially updated fields should also be included if they exist in `data`
+        # IMPORTANT: Include other updated fields if necessary for REDO
     }
     
     query = "UPDATE movies SET title = %s, ordering = %s WHERE titleId = %s"
@@ -556,91 +404,77 @@ def update_movie():
     
     logs = []
 
-    # SCENARIO 1: User is on Node 1 (Central)
-    if current_node == 'node1':
-        # 1. "Update central node first"
-        res_central = execute_query('node1', query, params)
+    # --- 1. IDENTIFY ALL PARTICIPANTS (REQUIRED STEP FOR 2PC) ---
+    participants = set()
+    # Central node always participates (or is the entry point)
+    participants.add('node1') 
+    # Both fragment nodes must participate in an UPDATE, as the location is unknown
+    participants.add('node2') 
+    participants.add('node3')
+    
+    # Add the current coordinator node if it's not already in the set (it will be)
+    participants.add(current_node)
+
+    active_connections = {}
+    all_ready = True
+    
+    # ------------------------------------------------------------------
+    # PHASE 1: PREPARE AND LOG READY STATUS (THE LOOP)
+    # ------------------------------------------------------------------
+    try:
+        # Coordinator logs PREPARE START
+        LOG_MANAGER.log_prepare_start(txn_id)
+        logs.append("Coordinator: Logged PREPARE START.")
         
-        if res_central['success'] and res_central['rows_affected'] > 0:
-            # Log Local Commit on Node 1 (Central)
-            LOG_MANAGER.log_local_commit(txn_id, 'UPDATE', record_key, new_value)
-            logs.append("Node 1 (Local): Success & Logged")
-
-            # 2. "Identify which fragmented node to modify" (Replication)
+        # --- THE REQUIRED LOOP ITERATING OVER ALL PARTICIPANTS ---
+        for p_key in participants:
+            # --- 1. Perform DB Write (NO COMMIT) ---
+            # NOTE: We use the prepare_write helper (which manages the connection)
+            res_prepare = _prepare_write(p_key, query, params)
             
-            # --- Attempt Node 2 Replication ---
-            LOG_MANAGER.log_replication_attempt(txn_id, 2)
-            res_node2 = execute_query('node2', query, params)
-            LOG_MANAGER.update_replication_status(txn_id, 2, res_node2['success'])
-            
-            if res_node2['success'] and res_node2['rows_affected'] > 0:
-                logs.append(f"Node 2 (Fragment): Updated (Found target, Log updated)")
+            if res_prepare['success']:
+                # 2. Log READY status on the coordinator's log for each successful prepare
+                LOG_MANAGER.log_ready_status(txn_id, 'UPDATE', record_key, new_value)
+                logs.append(f"{p_key}: Prepared write & Logged READY_COMMIT (Transaction held).")
+                active_connections[p_key] = res_prepare['connection'] # Save the open connection
             else:
-                logs.append(f"Node 2 (Fragment): Skipped/Not Found (Log updated)")
-                
-                # --- Attempt Node 3 Replication ---
-                LOG_MANAGER.log_replication_attempt(txn_id, 3)
-                res_node3 = execute_query('node3', query, params)
-                LOG_MANAGER.update_replication_status(txn_id, 3, res_node3['success'])
-                
-                if res_node3['rows_affected'] > 0:
-                     logs.append(f"Node 3 (Fragment): Updated (Found target, Log updated)")
-                else:
-                     logs.append(f"Node 3 (Fragment): Target Not Found (Log updated)")
-        else:
-            logs.append(f"Node 1 (Local): Failed/No Rows Affected - {res_central.get('error', '')}")
-
-    # SCENARIO 2 & 3: User is on Fragment
-    else:
-        # 1. "Update current node first"
-        res_local = execute_query(current_node, query, params)
-        current_node_id = int(current_node.replace('node', ''))
+                # One participant failed to prepare. Global abort is inevitable.
+                logs.append(f"{p_key}: Failed to Prepare: {res_prepare.get('error')}. ABORTING.")
+                all_ready = False
+                # Immediately close failed connection
+                if 'connection' in res_prepare: _final_commit_or_abort(res_prepare['connection'], commit=False)
+                break
         
-        if res_local['success'] and res_local['rows_affected'] > 0:
-            # SCENARIO 2: Data was local (Log commit on Fragment Node)
-            LOG_MANAGER.log_local_commit(txn_id, 'UPDATE', record_key, new_value)
-            logs.append(f"{current_node} (Local): Updated & Logged")
-            
-            # 2. "Then update central node" (Replication)
-            LOG_MANAGER.log_replication_attempt(txn_id, 1) # Target is Central Node (ID 1)
-            res_central = execute_query('node1', query, params)
-            
-            # Update Replication Status on the Fragment Node
-            LOG_MANAGER.update_replication_status(txn_id, 1, res_central['success'])
-            logs.append(f"Node 1 (Central): {'Updated' if res_central['success'] else 'Failed (Log updated)'}")
-        else:
-            # SCENARIO 3: Data to be updated is NOT in current node
-            logs.append(f"{current_node} (Local): 0 Rows Affected (Data is Remote)")
-            
-            # 1. "Update the other fragment"
-            other_node_key = 'node3' if current_node == 'node2' else 'node2'
-            other_node_id = int(other_node_key.replace('node', ''))
-            res_other = execute_query(other_node_key, query, params)
+    except Exception as e:
+        all_ready = False
+        logs.append(f"CRITICAL FAILURE during PREPARE phase: {e}")
 
-            if res_other['success'] and res_other['rows_affected'] > 0:
-                # If the remote update succeeds, log the commit on the *current node* (acting as coordinator)
-                LOG_MANAGER.log_local_commit(txn_id, 'UPDATE', record_key, new_value)
-                logs.append(f"{other_node_key} (Remote): Updated & Commit Logged on {current_node}")
-
-                # 2. "Then update central node" (Replication)
-                LOG_MANAGER.log_replication_attempt(txn_id, 1) # Target is Central Node (ID 1)
-                res_central = execute_query('node1', query, params)
-                
-                # Update Replication Status on the calling node (current_node)
-                LOG_MANAGER.update_replication_status(txn_id, 1, res_central['success'])
-                logs.append(f"Node 1 (Central): {'Updated' if res_central['success'] else 'Failed (Log updated)'}")
-            else:
-                logs.append(f"{other_node_key} (Remote): Not Found/Failed")
-                # No successful local commit log written if the remote update failed.
-
+    # ------------------------------------------------------------------
+    # PHASE 2: GLOBAL COMMIT/ABORT DECISION (THE SECOND LOOP)
+    # ------------------------------------------------------------------
+    final_decision = all_ready
+    
+    # 1. Coordinator logs GLOBAL_COMMIT/ABORT (The irrevocable decision)
+    log_res = LOG_MANAGER.log_global_commit(txn_id, commit=final_decision)
+    if not log_res['success']:
+        # This is a critical logging failure. Must force abort.
+        final_decision = False 
+        logs.append("CRITICAL: Global Log Failure. FORCING ABORT.")
+        
+    # 2. Coordinator sends final commit/abort signal to all open connections
+    for node_key, conn in active_connections.items():
+        commit_res = _final_commit_or_abort(conn, commit=final_decision)
+        logs.append(f"{node_key}: Final Decision - {'COMMIT' if final_decision else 'ABORT'} ({commit_res['status']})")
+        
     return jsonify({
-        "message": "Update Processed", 
+        "message": "Update Processed via 2PC", 
+        "decision": "COMMITTED" if final_decision else "ABORTED",
         "logs": logs,
         "txn_id": txn_id
     })
     
     
-# ROUTE: Delete
+# ROUTE: Delete (Refactored for 2PC)
 @app.route('/delete', methods=['POST'])
 def delete_movie():
     # Ensure the LOG_MANAGER is available
@@ -649,11 +483,11 @@ def delete_movie():
 
     data = request.json
     current_node = request.args.get('node', data.get('node', 'node1'))
-    title_id = data.get('titleId')
     
     # 1. Transaction Setup & Log Data Preparation
     txn_id = str(uuid.uuid4())
-    record_key = title_id
+    record_key = data.get('titleId')
+    title_id = data.get('titleId')
     
     # For a DELETE operation (REDO only), we log the key and the operation type.
     new_value = {"action": "DELETE", "titleId": title_id}
@@ -663,89 +497,71 @@ def delete_movie():
     
     logs = []
 
-    # SCENARIO 1: User is on Node 1 (Central)
-    if current_node == 'node1':
-        # 1. "Delete central node first"
-        res_central = execute_query('node1', query, params)
-        
-        if res_central['success'] and res_central['rows_affected'] > 0:
-            # Log Local Commit on Node 1 (Central)
-            LOG_MANAGER.log_local_commit(txn_id, 'DELETE', record_key, new_value)
-            logs.append("Node 1 (Local): Success & Logged")
+    # --- 1. IDENTIFY ALL PARTICIPANTS (REQUIRED STEP FOR 2PC) ---
+    participants = set()
+    # Central node always participates
+    participants.add('node1') 
+    # Both fragment nodes must participate in a DELETE to ensure the record is removed everywhere
+    participants.add('node2') 
+    participants.add('node3')
+    
+    # The coordinating node must also be in the set
+    participants.add(current_node)
 
-            # 2. Replicate to Node 2
-            LOG_MANAGER.log_replication_attempt(txn_id, 2)
-            res_node2 = execute_query('node2', query, params)
-            LOG_MANAGER.update_replication_status(txn_id, 2, res_node2['success'])
+    active_connections = {}
+    all_ready = True
+    
+    # ------------------------------------------------------------------
+    # PHASE 1: PREPARE AND LOG READY STATUS (THE LOOP)
+    # ------------------------------------------------------------------
+    try:
+        # Coordinator logs PREPARE START
+        LOG_MANAGER.log_prepare_start(txn_id)
+        logs.append("Coordinator: Logged PREPARE START.")
+        
+        # --- THE REQUIRED LOOP ITERATING OVER ALL PARTICIPANTS ---
+        for p_key in participants:
+            # --- 1. Perform DB Write (NO COMMIT) ---
+            # This executes the DELETE statement but holds the transaction open
+            res_prepare = _prepare_write(p_key, query, params)
             
-            if res_node2['rows_affected'] > 0:
-                logs.append("Node 2 (Fragment): Deleted (Log updated)")
+            if res_prepare['success']:
+                # 2. Log READY status on the coordinator's log for each successful prepare
+                LOG_MANAGER.log_ready_status(txn_id, 'DELETE', record_key, new_value)
+                logs.append(f"{p_key}: Prepared delete & Logged READY_COMMIT (Transaction held).")
+                active_connections[p_key] = res_prepare['connection'] # Save the open connection
             else:
-                logs.append("Node 2 (Fragment): Not Found/Failed (Log updated)")
-
-            # 3. Replicate to Node 3 (Only if not found in Node 2, in the original logic)
-            # We follow the original logic and only try Node 3 if Node 2 didn't delete anything.
-            if res_node2['rows_affected'] == 0:
-                 LOG_MANAGER.log_replication_attempt(txn_id, 3)
-                 res_node3 = execute_query('node3', query, params)
-                 LOG_MANAGER.update_replication_status(txn_id, 3, res_node3['success'])
-                 
-                 if res_node3['rows_affected'] > 0:
-                     logs.append(f"Node 3 (Fragment): Deleted (Log updated)")
-                 else:
-                     logs.append(f"Node 3 (Fragment): Target Not Found (Log updated)")
-            
-        else:
-            logs.append(f"Node 1 (Local): Failed/No Rows Affected - {res_central.get('error', '')}")
-
-    # SCENARIO 2 & 3: User is on Fragment
-    else:
-        current_node_id = int(current_node.replace('node', ''))
+                # One participant failed to prepare. Global abort is inevitable.
+                logs.append(f"{p_key}: Failed to Prepare: {res_prepare.get('error')}. ABORTING.")
+                all_ready = False
+                # Immediately close failed connection
+                if 'connection' in res_prepare: _final_commit_or_abort(res_prepare['connection'], commit=False)
+                break
         
-        # 1. "Update current node first"
-        res_local = execute_query(current_node, query, params)
+    except Exception as e:
+        all_ready = False
+        logs.append(f"CRITICAL FAILURE during PREPARE phase: {e}")
+
+    # ------------------------------------------------------------------
+    # PHASE 2: GLOBAL COMMIT/ABORT DECISION (THE SECOND LOOP)
+    # ------------------------------------------------------------------
+    final_decision = all_ready
+    
+    # 1. Coordinator logs GLOBAL_COMMIT/ABORT (The irrevocable decision)
+    log_res = LOG_MANAGER.log_global_commit(txn_id, commit=final_decision)
+    if not log_res['success']:
+        # This is a critical logging failure. Must force abort.
+        final_decision = False 
+        logs.append("CRITICAL: Global Log Failure. FORCING ABORT.")
         
-        if res_local['rows_affected'] > 0:
-            # SCENARIO 2: Data was local
-            # Log Local Commit on Fragment Node
-            LOG_MANAGER.log_local_commit(txn_id, 'DELETE', record_key, new_value)
-            logs.append(f"{current_node} (Local): Deleted & Logged")
-            
-            # 2. Replicate to Central Node
-            LOG_MANAGER.log_replication_attempt(txn_id, 1) # Target is Central Node (ID 1)
-            res_central = execute_query('node1', query, params)
-            
-            # Update Replication Status on the Fragment Node
-            LOG_MANAGER.update_replication_status(txn_id, 1, res_central['success'])
-            logs.append(f"Node 1 (Central): {'Deleted' if res_central['success'] else 'Failed (Log updated)'}")
-            
-        else:
-            # SCENARIO 3: Data to be deleted is NOT in current node
-            logs.append(f"{current_node} (Local): 0 Rows (Remote Data)")
-            
-            # 1. Update the other fragment
-            other_node_key = 'node3' if current_node == 'node2' else 'node2'
-            other_node_id = int(other_node_key.replace('node', ''))
-            res_other = execute_query(other_node_key, query, params)
-
-            if res_other['rows_affected'] > 0:
-                # If the remote delete succeeds, log the commit on the *current node* (acting as coordinator)
-                LOG_MANAGER.log_local_commit(txn_id, 'DELETE', record_key, new_value)
-                logs.append(f"{other_node_key} (Remote): Deleted & Commit Logged on {current_node}")
-                
-                # 2. Then delete central node (Replication)
-                LOG_MANAGER.log_replication_attempt(txn_id, 1) # Target is Central Node (ID 1)
-                res_central = execute_query('node1', query, params)
-                
-                # Update Replication Status on the calling node (current_node)
-                LOG_MANAGER.update_replication_status(txn_id, 1, res_central['success'])
-                logs.append(f"Node 1 (Central): {'Deleted' if res_central['success'] else 'Failed (Log updated)'}")
-            else:
-                logs.append(f"{other_node_key} (Remote): Not Found/Failed")
-                # No successful local commit log written if the remote delete failed.
-
+    # 2. Coordinator sends final commit/abort signal to all open connections
+    for node_key, conn in active_connections.items():
+        commit_res = _final_commit_or_abort(conn, commit=final_decision)
+        logs.append(f"{node_key}: Final Decision - {'COMMIT' if final_decision else 'ABORT'} ({commit_res['status']})")
+        
     return jsonify({
-        "message": "Delete Processed", 
+        "message": "Delete Processed via 2PC", 
+        "decision": "COMMITTED" if final_decision else "ABORTED",
         "logs": logs,
         "txn_id": txn_id
     })
