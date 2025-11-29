@@ -360,4 +360,13 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+
+    const reportModal = document.getElementById('report-modal');
+    if (reportModal) {
+        reportModal.addEventListener('click', function(e) {
+            if (e.target === this) {
+                reportModal.classList.remove('active');
+            }
+        });
+    }
 });
