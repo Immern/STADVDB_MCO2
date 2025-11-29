@@ -82,6 +82,62 @@ def get_last_update(node_key):
     # For now, return current timestamp
     return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
+# --- NEW HELPER FUNCTIONS in app.py ---
+
+def _prepare_write(node_key, query, params=None):
+    """
+    Phase 1: Executes the write query but DOES NOT commit. 
+    It holds the transaction open until final_commit_or_abort is called.
+    
+    NOTE: For simplicity, we are committing the prepare log here, but the data 
+    write is left uncommitted.
+    """
+    conn = get_db_connection(node_key)
+    if not conn:
+        return {"success": False, "error": "Connection failed"}
+    
+    try:
+        # NOTE: A real system would use a distributed transaction manager to track 
+        # this connection/transaction context. Here we rely on the connection object.
+        cursor = conn.cursor()
+        cursor.execute(query, params or ())
+        
+        rows_affected = cursor.rowcount
+        cursor.close() 
+        # Crucial: DO NOT conn.commit() here
+        
+        # Return the open connection to be managed by the calling route/coordinator
+        return {"success": True, "rows_affected": rows_affected, "connection": conn}
+    
+    except Exception as e:
+        if conn: conn.close()
+        return {"success": False, "error": str(e), "rows_affected": 0}
+
+def _final_commit_or_abort(conn, commit=True):
+    """
+    Phase 2: Performs the actual database commit or rollback based on 
+    the coordinator's global decision.
+    """
+    if not conn:
+        return {"success": False, "error": "No active connection/transaction"}
+    
+    try:
+        if commit:
+            conn.commit()
+            status = "COMMIT_SUCCESS"
+        else:
+            conn.rollback()
+            status = "ABORT_SUCCESS"
+            
+        conn.close()
+        return {"success": True, "status": status}
+    except Exception as e:
+        conn.close()
+        return {"success": False, "status": "FINAL_COMMIT_ERROR", "error": str(e)}
+
+# NOTE: The original execute_query (which calls conn.commit()) is now redundant for 
+# 2PC but is retained for old functions or read queries.    
+    
 # Frontend / Homepage
 @app.route('/')
 def index(): 
@@ -187,10 +243,161 @@ def get_movies():
         "source_node": source
     })
 
-# ROUTE: Insert
+# # ROUTE: Insert
+# @app.route('/insert', methods=['POST'])
+# def insert_movie():
+#     # Ensure the LOG_MANAGER is available (from global instantiation)
+#     if not LOG_MANAGER:
+#         return jsonify({"error": "Distributed Log Manager not initialized."}), 500
+
+#     data = request.json
+
+#     txn_id = str(uuid.uuid4())
+#     record_key = data.get('titleId')
+
+#     # Prepare the 'new_value' payload for the log (After Image)
+#     new_value = {
+#         'titleId': record_key,
+#         'ordering': data.get('ordering'),
+#         'title': data.get('title'),
+#         'region': data.get('region'),
+#         'language': data.get('language'),
+#         'types': data.get('types'),
+#         'attributes': data.get('attributes'),
+#         'isOriginalTitle': data.get('isOriginalTitle')
+#     }
+#     # ------------------------------------------------------------------
+
+#     # Determine current node
+#     current_node = request.args.get('node', data.get('node', 'node1'))
+
+#     params = (
+#         data.get('titleId'),
+#         data.get('ordering'),
+#         data.get('title'),
+#         data.get('region'),
+#         data.get('language'),
+#         data.get('types'),
+#         data.get('attributes'),
+#         data.get('isOriginalTitle')
+#     )
+
+#     query = """
+#         INSERT INTO movies 
+#         (titleId, ordering, title, region, language, types, attributes, isOriginalTitle) 
+#         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+#     """
+
+#     # Determine Correct Partition
+#     target_region = data.get('region')
+#     correct_fragment_key = 'node3' 
+#     correct_fragment_id = 3
+#     if target_region in ['US', 'JP']: 
+#         correct_fragment_key = 'node2'
+#         correct_fragment_id = 2
+
+#     # logs for CONSOLE output
+#     logs = []
+
+#     # ------------------------------------------------------------------
+#     # NEW PHASE 1 SIMULATION: PREPARE AND READY LOGGING
+#     # ------------------------------------------------------------------
+#     try:
+#         # 1. Coordinator (current_node) logs PREPARE START
+#         LOG_MANAGER.log_prepare_start(txn_id)
+#         logs.append("Phase 1: Coordinator Logged PREPARE START.")
+
+#         # 2. Coordinator (current_node) logs its own READY_COMMIT status
+#         #    (Assuming the transaction logic itself is ready to commit)
+#         LOG_MANAGER.log_ready_status(txn_id, 'INSERT', record_key, new_value)
+#         logs.append("Phase 1: Coordinator Logged READY_COMMIT (Simulated Consensus).")
+        
+#     except Exception as e:
+#         # If the coordinator can't even log READY, the transaction is ABORTED immediately.
+#         logs.append(f"FATAL: Coordinator Log Failure during PREPARE. Aborting: {e}")
+#         # Note: A real system would log GLOBAL_ABORT here.
+#         return jsonify({"message": "Transaction ABORTED due to Log Failure", "logs": logs, "txn_id": txn_id}), 500
+    
+    
+
+
+#     # SCENARIO 1: User is on Node 1 (Central)
+#     if current_node == 'node1':
+#         # 1. "Update central node first"
+#         res_central = execute_query('node1', query, params)
+        
+#         # LOG LOCAL COMMIT on Node 1 (Central)
+#         if res_central['success']:
+#             LOG_MANAGER.log_global_commit(txn_id, 'INSERT', record_key, new_value)
+#             logs.append("Node 1 (Local): Success & Logged")
+
+#             # 2. "Then identify which fragmented node to modify" (Replication)
+#             LOG_MANAGER.log_replication_attempt(txn_id, correct_fragment_id)
+#             res_frag = execute_query(correct_fragment_key, query, params)
+            
+#             # Update Replication Status on Node 1
+#             LOG_MANAGER.update_replication_status(txn_id, correct_fragment_id, res_frag['success'])
+#             logs.append(f"{correct_fragment_key} (Fragment): {'Success' if res_frag['success'] else 'Failed (Log updated)'}")
+#         else:
+#             # Central commit failed. No successful log entry.
+#             logs.append(f"Node 1 (Local): Failed - {res_central.get('error', '')}")
+
+
+#     # SCENARIO 2 & 3: User is on a Fragment (Node 2 or 3)
+#     else:
+#         current_node_id = int(current_node.replace('node', ''))
+        
+#         # Check if the data belongs here
+#         if current_node == correct_fragment_key:
+#             # SCENARIO 2: Data belongs to current node
+            
+#             # 1. "Update current node first"
+#             res_local = execute_query(current_node, query, params)
+            
+#             # LOG LOCAL COMMIT on the Fragment Node
+#             if res_local['success']:
+#                 LOG_MANAGER.log_global_commit(txn_id, 'INSERT', record_key, new_value)
+#                 logs.append(f"{current_node} (Local): Success & Logged")
+                
+#                 # 2. "Then update central node" (Replication)
+#                 LOG_MANAGER.log_replication_attempt(txn_id, 1) # Target is Central Node (ID 1)
+#                 res_central = execute_query('node1', query, params)
+                
+#                 # Update Replication Status on the Fragment Node
+#                 LOG_MANAGER.update_replication_status(txn_id, 1, res_central['success'])
+#                 logs.append(f"Node 1 (Central): {'Success' if res_central['success'] else 'Failed (Log updated)'}")
+#             else:
+#                 logs.append(f"{current_node} (Local): Failed - {res_local.get('error', '')}")
+            
+#         else:
+#             # SCENARIO 3: Data belongs to OTHER fragment
+#             # "Fetch from other fragmented node" (In insert terms: Insert to other fragment)
+#             logs.append(f"{current_node} (Local): Skipped (Data belongs to {correct_fragment_key})")
+            
+#             res_other = execute_query(correct_fragment_key, query, params)
+            
+#             if res_other['success']:
+#                 LOG_MANAGER.log_global_commit(txn_id, 'INSERT', record_key, new_value)
+#                 logs.append(f"{correct_fragment_key} (Remote): Success & Commit Logged on {current_node}")
+                
+#                 LOG_MANAGER.log_replication_attempt(txn_id, 1) 
+#                 res_central = execute_query('node1', query, params)
+                
+#                 LOG_MANAGER.update_replication_status(txn_id, 1, res_central['success'])
+#                 logs.append(f"Node 1 (Central): {'Success' if res_central['success'] else 'Failed (Log updated)'}")
+#             else:
+#                  logs.append(f"{correct_fragment_key} (Remote): Failed - No Log Commit")
+
+#     return jsonify({
+#         "message": "Insert Processed", 
+#         "logs": logs,
+#         "txn_id": txn_id
+#     })
+    
+# ROUTE: Insert (Corrected 2PC Implementation)
 @app.route('/insert', methods=['POST'])
 def insert_movie():
-    # Ensure the LOG_MANAGER is available (from global instantiation)
+    # ... (Initialization, data setup, query, and partition logic remains the same) ...
     if not LOG_MANAGER:
         return jsonify({"error": "Distributed Log Manager not initialized."}), 500
 
@@ -242,80 +449,80 @@ def insert_movie():
 
     # logs for CONSOLE output
     logs = []
+    # Determine Correct Partition
+    target_region = data.get('region')
+    correct_fragment_key = 'node3' 
+    if target_region in ['US', 'JP']: 
+        correct_fragment_key = 'node2'
 
-    # SCENARIO 1: User is on Node 1 (Central)
-    if current_node == 'node1':
-        # 1. "Update central node first"
-        res_central = execute_query('node1', query, params)
+    # --- 1. IDENTIFY ALL PARTICIPANTS (REQUIRED STEP FOR 2PC) ---
+    participants = set()
+    # The coordinating node must commit locally
+    participants.add(current_node)
+    # The central node must commit
+    participants.add('node1')
+    # The target fragment node must commit
+    participants.add(correct_fragment_key)
+
+    logs = []
+    active_connections = {}
+    all_ready = True
+    
+    # ------------------------------------------------------------------
+    # PHASE 1: PREPARE AND LOG READY STATUS (THE LOOP)
+    # ------------------------------------------------------------------
+    try:
+        # Coordinator logs PREPARE START
+        LOG_MANAGER.log_prepare_start(txn_id)
+        logs.append("Coordinator: Logged PREPARE START.")
         
-        # LOG LOCAL COMMIT on Node 1 (Central)
-        if res_central['success']:
-            LOG_MANAGER.log_local_commit(txn_id, 'INSERT', record_key, new_value)
-            logs.append("Node 1 (Local): Success & Logged")
-
-            # 2. "Then identify which fragmented node to modify" (Replication)
-            LOG_MANAGER.log_replication_attempt(txn_id, correct_fragment_id)
-            res_frag = execute_query(correct_fragment_key, query, params)
+        # --- THE REQUIRED LOOP ITERATING OVER ALL PARTICIPANTS ---
+        for p_key in participants:
+            # --- 1. Perform DB Write (NO COMMIT) ---
+            # This is the request sent from the coordinator to the participant
+            res_prepare = _prepare_write(p_key, query, params) # <-- CALL HERE!
             
-            # Update Replication Status on Node 1
-            LOG_MANAGER.update_replication_status(txn_id, correct_fragment_id, res_frag['success'])
-            logs.append(f"{correct_fragment_key} (Fragment): {'Success' if res_frag['success'] else 'Failed (Log updated)'}")
-        else:
-            # Central commit failed. No successful log entry.
-            logs.append(f"Node 1 (Local): Failed - {res_central.get('error', '')}")
-
-
-    # SCENARIO 2 & 3: User is on a Fragment (Node 2 or 3)
-    else:
-        current_node_id = int(current_node.replace('node', ''))
+            if res_prepare['success']:
+                # 2. Log READY status (Coordinator logs success status for this participant)
+                LOG_MANAGER.log_ready_status(txn_id, 'INSERT', record_key, new_value)
+                logs.append(f"{p_key}: Prepared write & Logged READY_COMMIT (Transaction held).")
+                active_connections[p_key] = res_prepare['connection'] # Save the open connection
+            else:
+                # One participant failed to prepare. Global abort is inevitable.
+                logs.append(f"{p_key}: Failed to Prepare: {res_prepare.get('error')}. ABORTING.")
+                all_ready = False
+                # Immediately close failed connection
+                if 'connection' in res_prepare: _final_commit_or_abort(res_prepare['connection'], commit=False)
+                break
         
-        # Check if the data belongs here
-        if current_node == correct_fragment_key:
-            # SCENARIO 2: Data belongs to current node
-            
-            # 1. "Update current node first"
-            res_local = execute_query(current_node, query, params)
-            
-            # LOG LOCAL COMMIT on the Fragment Node
-            if res_local['success']:
-                LOG_MANAGER.log_local_commit(txn_id, 'INSERT', record_key, new_value)
-                logs.append(f"{current_node} (Local): Success & Logged")
-                
-                # 2. "Then update central node" (Replication)
-                LOG_MANAGER.log_replication_attempt(txn_id, 1) # Target is Central Node (ID 1)
-                res_central = execute_query('node1', query, params)
-                
-                # Update Replication Status on the Fragment Node
-                LOG_MANAGER.update_replication_status(txn_id, 1, res_central['success'])
-                logs.append(f"Node 1 (Central): {'Success' if res_central['success'] else 'Failed (Log updated)'}")
-            else:
-                logs.append(f"{current_node} (Local): Failed - {res_local.get('error', '')}")
-            
-        else:
-            # SCENARIO 3: Data belongs to OTHER fragment
-            # "Fetch from other fragmented node" (In insert terms: Insert to other fragment)
-            logs.append(f"{current_node} (Local): Skipped (Data belongs to {correct_fragment_key})")
-            
-            res_other = execute_query(correct_fragment_key, query, params)
-            
-            if res_other['success']:
-                LOG_MANAGER.log_local_commit(txn_id, 'INSERT', record_key, new_value)
-                logs.append(f"{correct_fragment_key} (Remote): Success & Commit Logged on {current_node}")
-                
-                LOG_MANAGER.log_replication_attempt(txn_id, 1) 
-                res_central = execute_query('node1', query, params)
-                
-                LOG_MANAGER.update_replication_status(txn_id, 1, res_central['success'])
-                logs.append(f"Node 1 (Central): {'Success' if res_central['success'] else 'Failed (Log updated)'}")
-            else:
-                 logs.append(f"{correct_fragment_key} (Remote): Failed - No Log Commit")
+    except Exception as e:
+        all_ready = False
+        logs.append(f"CRITICAL FAILURE during PREPARE phase: {e}")
 
+    # ------------------------------------------------------------------
+    # PHASE 2: GLOBAL COMMIT/ABORT DECISION (THE SECOND LOOP)
+    # ------------------------------------------------------------------
+    final_decision = all_ready
+    
+    # 1. Coordinator logs GLOBAL_COMMIT/ABORT (The irrevocable decision)
+    log_res = LOG_MANAGER.log_global_commit(txn_id, commit=final_decision)
+    if not log_res['success']:
+        # This is a critical logging failure. Must force abort.
+        final_decision = False 
+        logs.append("CRITICAL: Global Log Failure. FORCING ABORT.")
+        
+    # 2. Coordinator sends final commit/abort signal to all open connections
+    # --- THE REQUIRED LOOP FOR FINAL EXECUTION ---
+    for node_key, conn in active_connections.items():
+        commit_res = _final_commit_or_abort(conn, commit=final_decision) # <-- CALL HERE!
+        logs.append(f"{node_key}: Final Decision - {'COMMIT' if final_decision else 'ABORT'} ({commit_res['status']})")
+        
     return jsonify({
-        "message": "Insert Processed", 
+        "message": "Transaction Processed via 2PC", 
+        "decision": "COMMITTED" if final_decision else "ABORTED",
         "logs": logs,
         "txn_id": txn_id
     })
-    
     
 # ROUTE: Update
 @app.route('/update', methods=['POST'])

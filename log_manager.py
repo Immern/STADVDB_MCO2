@@ -97,6 +97,66 @@ class DistributedLogManager:
             
         print(f"--- Recovery for Node {self.node_id} Complete ---")
 
+    def log_prepare_start(self, txn_id):
+        """Logs the coordinator's initiation of the 2PC protocol (Phase 1)."""
+        sql = "INSERT INTO transaction_logs (transaction_id, log_timestamp, status) VALUES (%s, %s, 'PREPARE_SENT');"
+        params = (txn_id, datetime.now())
+        
+        try:
+            cursor = self.db_conn.cursor()
+            cursor.execute(sql, params)
+            self.db_conn.commit() 
+            cursor.close()
+            print(f"Log: Coordinator on Node {self.node_id} sent PREPARE for {txn_id} (LOG SAVED).")
+        except Exception as e:
+            print(f"FATAL LOGGING ERROR (PREPARE) for {txn_id}: {e}")
+            raise e # Re-raise to ensure transaction failure is handled
+
+    def log_ready_status(self, txn_id, op_type, key, new_data):
+        """Logs the participant's readiness to commit (Phase 1 response), including REDO image."""
+        sql = """
+        INSERT INTO transaction_logs 
+        (transaction_id, log_timestamp, operation_type, record_key, new_value, status)
+        VALUES (%s, %s, %s, %s, %s, 'READY_COMMIT');
+        """
+        params = (
+            txn_id,
+            datetime.now(),
+            op_type,
+            key,
+            json.dumps(new_data)
+        )
+        
+        try:
+            cursor = self.db_conn.cursor()
+            cursor.execute(sql, params)
+            self.db_conn.commit() 
+            cursor.close()
+            print(f"Log: Participant on Node {self.node_id} is READY for {txn_id} (LOG SAVED).")
+        except Exception as e:
+            print(f"FATAL LOGGING ERROR (READY) for {txn_id}: {e}")
+            raise e
+
+    def log_global_commit(self, txn_id, commit=True):
+        """Logs the coordinator's final, irrevocable decision (Phase 2)."""
+        status = 'GLOBAL_COMMIT' if commit else 'GLOBAL_ABORT'
+        sql = "INSERT INTO transaction_logs (transaction_id, log_timestamp, status) VALUES (%s, %s, %s);"
+        params = (txn_id, datetime.now(), status)
+        
+        try:
+            cursor = self.db_conn.cursor()
+            cursor.execute(sql, params)
+            self.db_conn.commit() 
+            cursor.close()
+            print(f"Log: Coordinator on Node {self.node_id} recorded {status} for {txn_id} (IRREVOCABLE).")
+            return {'success': True}
+        except Exception as e:
+            print(f"FATAL LOGGING ERROR (GLOBAL_COMMIT/ABORT) for {txn_id}: {e}")
+            return {'success': False, 'error': str(e)}
+
+    # NOTE: The original log_local_commit is now redundant and should be removed. 
+    # The replication-related methods can stay as they track the commit outcome.
+            
     def _simulate_fetch_missed_logs(self, last_time):
         """
         Placeholder: In a real distributed system, this would be a network call
