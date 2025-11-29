@@ -323,22 +323,75 @@ async function generateReport(type) {
     // Determine endpoint based on report type
     const endpoint = type === 1 ? '/report/distribution' : '/report/types';
     
-    document.getElementById('report-content').textContent = "Generating report...";
-    document.getElementById('report-modal').classList.add('active');
+    const modal = document.getElementById('report-modal');
+    const content = document.getElementById('report-content');
+    const title = document.getElementById('report-title');
+    
+    if (!modal || !content) {
+        console.error("Report Modal elements not found!");
+        return;
+    }
+
+    // Set loading state
+    content.innerHTML = '<div style="text-align:center; padding: 20px;">Generating report...</div>';
+    title.textContent = type === 1 ? "Report: Regional Distribution" : "Report: Content Types";
+    modal.classList.add('active');
     
     try {
         const response = await fetch(`${endpoint}?node=node${activeNode}`);
         const result = await response.json();
         
         if (result.error) {
-            document.getElementById('report-content').textContent = "Error: " + result.error;
+            content.innerHTML = `<div class="error-message">Error: ${result.error}</div>`;
         } else {
-            document.getElementById('report-content').textContent = result.report;
+            // Parse the text report into a nice table
+            const tableHTML = parseReportToTable(result.report);
+            content.innerHTML = tableHTML;
         }
         
     } catch (error) {
-        document.getElementById('report-content').textContent = "Network Error: " + error;
+        content.innerHTML = `<div class="error-message">Network Error: ${error}</div>`;
     }
+}
+
+function parseReportToTable(reportText) {
+    const lines = reportText.split('\n');
+    let html = '<table class="report-table">';
+    
+    lines.forEach((line, index) => {
+        // Skip separator lines (lines containing only dashes or equals)
+        if (line.match(/^[-=]+$/) || line.trim() === '') return;
+        
+        // Check if it's a header or title
+        if (line.startsWith('REPORT:')) {
+            html += `<caption>${line}</caption>`;
+            return;
+        }
+
+        const columns = line.split('|').map(col => col.trim());
+        
+        if (columns.length >= 2) {
+            if (line.includes('REGION') || line.includes('TYPE')) {
+                // Table Header
+                html += '<thead><tr>';
+                columns.forEach(col => html += `<th>${col}</th>`);
+                html += '</tr></thead><tbody>';
+            } else if (line.includes('TOTAL')) {
+                // Total Row
+                html += '<tr class="total-row">';
+                columns.forEach(col => html += `<td><strong>${col}</strong></td>`);
+                html += '</tr>';
+            } else {
+                // Data Row
+                html += '<tr>';
+                columns.forEach(col => html += `<td>${col}</td>`);
+                html += '</tr>';
+            }
+        }
+    });
+    
+    html += '</tbody></table>';
+    return html;
 }
 
 // Close modals when clicking outside - wait for DOM to load
