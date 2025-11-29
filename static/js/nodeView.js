@@ -317,6 +317,30 @@ async function simulateConcurrency() {
     }
 }
 
+async function generateReport(type) {
+    const activeNode = currentNode || 1;
+
+    // Determine endpoint based on report type
+    const endpoint = type === 1 ? '/report/distribution' : '/report/types';
+    
+    document.getElementById('report-content').textContent = "Generating report...";
+    document.getElementById('report-modal').classList.add('active');
+    
+    try {
+        const response = await fetch(`${endpoint}?node=node${activeNode}`);
+        const result = await response.json();
+        
+        if (result.error) {
+            document.getElementById('report-content').textContent = "Error: " + result.error;
+        } else {
+            document.getElementById('report-content').textContent = result.report;
+        }
+        
+    } catch (error) {
+        document.getElementById('report-content').textContent = "Network Error: " + error;
+    }
+}
+
 // Close modals when clicking outside - wait for DOM to load
 document.addEventListener('DOMContentLoaded', function() {
     const insertModal = document.getElementById('insert-modal');
