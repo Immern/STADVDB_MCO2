@@ -264,6 +264,21 @@
         </div>
     </div>
 
+    <!-- Report Modal -->
+    <div id="report-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="report-title">Generated Report</h2>
+            </div>
+            <div class="modal-body">
+                <pre id="report-content" style="background: #f4f4f4; padding: 15px; border-radius: 4px; font-family: monospace; white-space: pre-wrap;">Loading...</pre>
+            </div>
+            <div class="modal-footer">
+                <button onclick="document.getElementById('report-modal').classList.remove('active')">Close</button>
+            </div>
+        </div>
+    </div>
+
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
     <script src="{{ url_for('static', filename='js/nodeView.js') }}"></script>
 </body>
