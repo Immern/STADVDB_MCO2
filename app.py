@@ -103,21 +103,6 @@ def get_last_update(node_key):
     # For now, return current timestamp
     return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
-def execute_query(node_key, query, params=None):
-    conn = get_db_connection(node_key)
-    if not conn:
-        return {"success": False, "error": "Connection failed"}
-    
-    try:
-        cursor = conn.cursor()
-        cursor.execute(query, params or ())
-        conn.commit()
-        cursor.close()
-        conn.close()
-        return {"success": True}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
 # Frontend / Homepage
 @app.route('/')
 def index(): 
