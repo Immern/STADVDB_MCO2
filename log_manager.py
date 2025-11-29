@@ -68,6 +68,8 @@ class DistributedLogManager:
         cursor.close()
         print(f"Log: Transaction {txn_id} replication PENDING to Node {target_node}.")
     
+   
+    
     def update_replication_status(self, txn_id, target_node, success=True):
         """Updates the status after a replication attempt (success or failure)."""
         new_status = 'REPLICATION_SUCCESS' if success else 'REPLICATION_FAILED'
@@ -85,17 +87,7 @@ class DistributedLogManager:
 
     # --- Step 3: Global Failure Recovery Logic (Handles Case #2 and #4) ---
 
-    def recover_missed_writes(self, last_known_commit_time):
-        missed_logs = self._simulate_fetch_missed_logs(last_known_commit_time)
-
-        for log in missed_logs:
-            print(f"   -> REDO: Applying missed {log['operation_type']} for record {log['record_key']}...")
-            
-            # --- CALLING THE NEW REDO HELPER ---
-            if self._apply_redo_to_main_db(log):
-                print("      -> Successfully applied. Must acknowledge back to Node 1.")
-            
-        print(f"--- Recovery for Node {self.node_id} Complete ---")
+   
 
     def log_prepare_start(self, txn_id):
         """Logs the coordinator's initiation of the 2PC protocol (Phase 1)."""

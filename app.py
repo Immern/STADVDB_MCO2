@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 import os
 from log_manager import DistributedLogManager
 from db_helpers import get_db_connection, DB_CONFIG    
-
+from apscheduler.schedulers.background import BackgroundScheduler
 load_dotenv()
 try:
     LOCAL_NODE_KEY = os.environ.get('LOCAL_NODE_KEY', 'node1') 
@@ -135,13 +135,147 @@ def _final_commit_or_abort(conn, commit=True):
         conn.close()
         return {"success": False, "status": "FINAL_COMMIT_ERROR", "error": str(e)}
 
-# NOTE: The original execute_query (which calls conn.commit()) is now redundant for 
-# 2PC but is retained for old functions or read queries.    
+# --- SCHEDULER HELPER FUNCTION ---
+def scheduled_recovery():
+    """
+    Function executed by the scheduler every 15 seconds.
+    It attempts to run the recovery logic using a simulated timestamp.
+    """
+    if not LOG_MANAGER:
+        print("Scheduler: LOG_MANAGER not initialized. Skipping recovery run.")
+        return
+
+    # NOTE: Since this is a background job, we cannot get a timestamp from a request body.
+    # For a simple simulation, we will use a fixed, old timestamp 
+    # (e.g., from the start of the app) to ensure it checks for everything, 
+    # or you can query the LATEST log entry's timestamp as the starting point.
+    
+    # Using an old fixed timestamp (e.g., January 1, 2024) to ensure all logs are checked
+    # during initial testing, or query the actual latest time.
+    # For robust simulation, you should use the time the node went down.
+    
+    # For now, let's use a very old, fixed time to guarantee logs are found.
+    # In a real app, you would fetch the last successful commit time.
+    last_known_commit_time = datetime(2025, 1, 1, 0, 0, 0)
+    
+    print(f"\n[SCHEDULER] Node {LOG_MANAGER.node_id} Auto-Recovery starting from {last_known_commit_time}...")
+    
+    try:
+        # Re-establish the connection in case it was closed
+        if not LOG_MANAGER.db_conn or not LOG_MANAGER.db_conn.is_connected():
+            LOG_MANAGER.db_conn = get_db_connection(LOCAL_NODE_KEY)
+            
+        if not LOG_MANAGER.db_conn:
+            print(f"FATAL: Could not re-establish DB connection to {LOCAL_NODE_KEY}. Skipping REDO.")
+            return
+
+        # Run the core recovery logic (REDO missed transactions)
+        LOG_MANAGER.recover_missed_writes(last_known_commit_time)
+        
+        print(f"[SCHEDULER] Auto-Recovery sequence for Node {LOG_MANAGER.node_id} completed successfully.")
+
+    except Exception as e:
+        print(f"[SCHEDULER] An unexpected error occurred during recovery: {str(e)}")
+
+def _fetch_logs_from_active_node(source_node_key, target_node_key, txn_id=None):
+    """
+    Simulates a network call for the recovering node (target) to request 
+    committed logs from an active node (source).
+    
+    The query filters for GLOBAL_COMMIT records that pertain to the target node.
+    """
+    conn = get_db_connection(source_node_key) # Connect to the active node's DB
+    if not conn:
+        print(f"Failed to connect to {source_node_key} to fetch logs.")
+        return []
+        
+    try:
+        # We need the node ID for filtering the replication target
+        target_node_id = int(target_node_key.replace('node', ''))
+        
+        cursor = conn.cursor(dictionary=True)
+        
+        # Logically, the log must contain the After-Image (new_value) 
+        # which is held in the READY_COMMIT log, but we only want to fetch 
+        # transactions where the coordinator decided to commit (GLOBAL_COMMIT).
+        
+        # Since log_global_commit records only status, we must fetch the 
+        # necessary REDO data from the READY_COMMIT record, which holds the payload.
+        
+        # We fetch all READY_COMMIT logs from the source node that belong to a 
+        # globally committed transaction.
+        
+        query = """
+        SELECT l1.* FROM transaction_logs l1
+        JOIN transaction_logs l2 ON l1.transaction_id = l2.transaction_id
+        WHERE l1.status = 'READY_COMMIT' 
+        AND l2.status = 'GLOBAL_COMMIT'
+        ORDER BY l1.log_timestamp ASC;
+        """
+        cursor.execute(query)
+        logs = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return logs
+    except Exception as e:
+        print(f"Error fetching logs from {source_node_key}: {e}")
+        if conn: conn.close()
+        return []
     
 # Frontend / Homepage
 @app.route('/')
 def index(): 
     return render_template('index.html')
+
+# --- ADD OR REPLACE THIS ROUTE IN app.py ---
+
+@app.route('/recover', methods=['POST'])
+def initiate_recovery():
+    if not LOG_MANAGER:
+        return jsonify({"error": "Distributed Log Manager not initialized."}), 500
+
+    recovering_node_key = LOCAL_NODE_KEY 
+    all_nodes = list(DB_CONFIG.keys())
+    
+    # Identify active nodes to query for missed transactions
+    active_coordinator_nodes = [n for n in all_nodes if n != recovering_node_key]
+
+    missed_logs_to_apply = []
+    
+    # 1. Look for committed transactions on active nodes
+    for active_node_key in active_coordinator_nodes:
+        # Use the corrected helper, passing the recovering node's key as the target
+        committed_logs = _fetch_logs_from_active_node(active_node_key, recovering_node_key)
+        
+        # Append only unique log entries (based on txn_id, though the query should ideally handle this)
+        missed_logs_to_apply.extend(committed_logs)
+        
+    recovery_logs = []
+    
+    # 2. Perform REDO using the local Log Manager
+    for log_entry in missed_logs_to_apply:
+        # The log entry contains the 'After Image' (new_value) needed for REDO
+        
+        # Check local log to ensure transaction wasn't already committed locally
+        # This prevents redundant REDO operations if the system logged GLOBAL_COMMIT 
+        # but crashed before cleaning up the READY_COMMIT or if the REDO is redundant.
+        
+        # Since we cannot easily check the local log state here, we rely on 
+        # the idempotency of the REDO operation in _apply_redo_to_main_db.
+        
+        # NOTE: Your _apply_redo_to_main_db already relies on the existence of keys 
+        # 'operation_type', 'record_key', and 'new_value' from the log_entry dict.
+        
+        applied = LOG_MANAGER._apply_redo_to_main_db(log_entry)
+        
+        recovery_logs.append(f"REDO {log_entry.get('operation_type')}: {log_entry.get('record_key')} - {'SUCCESS' if applied else 'FAILED'}")
+            
+    return jsonify({
+        "node": recovering_node_key,
+        "message": "Recovery attempt complete.",
+        "transactions_found": len(missed_logs_to_apply),
+        "recovery_logs": recovery_logs
+    })
 
 # ROUTE: Status with detailed information
 @app.route('/status', methods=['GET'])
@@ -680,5 +814,20 @@ def report_types():
     finally:
         conn.close()
 
+scheduler = BackgroundScheduler()
+
+# Add the job to run every 15 seconds
+# trigger='interval', seconds=15
+scheduler.add_job(
+    func=scheduled_recovery, 
+    trigger='interval', 
+    seconds=15, 
+    id='auto_recovery_job',
+    name='Auto-Recovery Checker'
+)
+
+# Start the scheduler
+scheduler.start()
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=80)
+    app.run(host='0.0.0.0', port=80, use_reloader=False)
