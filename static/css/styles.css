@@ -246,13 +246,26 @@ button:hover {
     background-color: #218838;
 }
 
-/* Concurrency Button */
+/* =======================
+   CONCURRENCY BUTTON
+   ======================= */
 .concurrency-button {
     background-color: #fd7e14;
 }
 
 .concurrency-button:hover {
     background-color: #e8590c;
+}
+
+/* =======================
+   REPORT BUTTONS
+   ======================= */
+.report-button {
+    background-color: #6f42c1;
+}
+
+.report-button:hover {
+    background-color: #5a32a3;
 }
 
 /* =======================
