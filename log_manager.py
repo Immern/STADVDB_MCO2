@@ -4,9 +4,10 @@ import json
 from db_helpers import get_db_connection
 
 class DistributedLogManager:
-    def __init__(self, node_id, db_connection):
+    def __init__(self, node_id, db_connection, auto_commit_log=True):
         self.node_id = node_id  # 1 (Central), 2, or 3
         self.db_conn = db_connection
+        self.auto_commit_log = auto_commit_log
         self._initialize_log_table()
 
     def _initialize_log_table(self):
@@ -44,9 +45,19 @@ class DistributedLogManager:
         try:
             cursor = self.db_conn.cursor()
             cursor.execute(sql, params)
-            self.db_conn.commit() 
+
+            # --- Conditional Commit and Message ---
+            if self.auto_commit_log:
+                self.db_conn.commit() 
+                status_message = "LOG COMMITTED (DURABLE)."
+            else:
+                # Log entry is only in the connection's transaction buffer
+                status_message = "LOG EXECUTED (PENDING MANUAL COMMIT)."
+            # ----------------------------------------------------
+            
             cursor.close()
-            print(f"Log: Transaction {txn_id} committed successfully on Node {self.node_id} (LOG SAVED).")
+            print(f"Log: Transaction {txn_id} successfully recorded on Node {self.node_id} ({status_message})")
+
         except Exception as e:
             print(f"FATAL LOGGING ERROR for {txn_id}: {e}")
 

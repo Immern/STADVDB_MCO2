@@ -21,10 +21,16 @@ DB_CONFIG = {
     }
 }
 
-def get_db_connection(node_key):
+def get_db_connection(node_key, isolation_level = None, autocommit_conn = True):
     try:
         config = DB_CONFIG[node_key]
         conn = mysql.connector.connect(**config)
+
+        if isolation_level:
+            conn.isolation_level = isolation_level
+            
+        conn.autocommit = autocommit_conn
+
         return conn
     except Exception as e:
         print(f"Error connecting to {node_key}: {e}")

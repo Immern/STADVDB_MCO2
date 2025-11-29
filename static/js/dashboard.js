@@ -23,15 +23,35 @@ function navigateToDashboard() {
 function applySettings() {
     const isolationLevel = document.getElementById('isolation-level').value;
     const failureSimulation = document.getElementById('failure-simulation').value;
+    const autoCommit = document.getElementById('auto-commit').value // will require an auto-commit element from the frontend
     
     console.log('Applying settings:', { isolationLevel, failureSimulation });
     
     // TODO: Send settings to backend
     // - Apply isolation level to transactions
+    // - Disable/Enable autocommit
     // - Configure failure simulation scenarios
     // - Update backend transaction handling
     
-    alert(`Settings applied:\nIsolation Level: ${isolationLevel}\nFailure Simulation: ${failureSimulation}`);
+    const settingsPayload = {
+        isolationLevel: isolationLevel,
+        failureSimulation: failureSimulation,
+        autoCommit: autoCommit // if implemented
+    };
+    
+    // Send settings to backend
+    fetch('/settings', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(settingsPayload),
+    })
+    .then(response => response.json())
+    .then(data => console.log('Backend response:', data))
+    .catch((error) => console.error('Error sending settings:', error));
+    
+    alert(`Settings applied:\nIsolation Level: ${isolationLevel}\nFailure Simulation: ${failureSimulation}\nAuto Commit: ${autoCommit}`);
 }
 
 // Load node status from backend
