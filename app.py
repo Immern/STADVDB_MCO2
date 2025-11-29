@@ -1,6 +1,7 @@
 from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
 import mysql.connector
+from datetime import datetime
 
 import uuid
 from datetime import datetime
@@ -30,9 +31,29 @@ except Exception as e:
 
 # Initialize the Flask application
 app = Flask(__name__)
-CORS(app) # This allows nodes/browsers to talk to this API
+CORS(app)
 
-
+# Database configuration
+DB_CONFIG = {
+    'node1': {
+        'host': '10.2.14.84', 
+        'user': 'admin',
+        'password': 'poginiallen',     
+        'database': 'mco2_ddb'      
+    },
+    'node2': {
+        'host': '10.2.14.85',  
+        'user': 'admin',
+        'password': 'poginiallen',
+        'database': 'mco2_ddb'
+    },
+    'node3': {
+        'host': '10.2.14.86',  
+        'user': 'admin',
+        'password': 'poginiallen',
+        'database': 'mco2_ddb'
+    }
+}
 
 # --- HELPER FUNCTION: Connect to DB ---
 def get_db_connection(node_key):
@@ -62,84 +83,158 @@ def execute_query(node_key, query, params=None):
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+def get_row_count(node_key):
+    """Get the total number of rows in a node"""
+    conn = get_db_connection(node_key)
+    if not conn:
+        return 0
+    
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM movies")
+        count = cursor.fetchone()[0]
+        cursor.close()
+        conn.close()
+        return count
+    except Exception as e:
+        print(f"Error counting rows in {node_key}: {e}")
+        return 0
+
+def get_last_update(node_key):
+    """Get the timestamp of the last update in a node"""
+    # TODO: Implement actual last update tracking
+    # For now, return current timestamp
+    return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    
+def execute_query(node_key, query, params=None):
+    conn = get_db_connection(node_key)
+    if not conn:
+        return {"success": False, "error": "Connection failed"}
+    
+    try:
+        cursor = conn.cursor()
+        cursor.execute(query, params or ())
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 # Frontend / Homepage
 @app.route('/')
 def index(): 
     return render_template('index.html')
 
-# ROUTE: Status
+# ROUTE: Status with detailed information
 @app.route('/status', methods=['GET'])
 def node_status():
     status_report = {}
     for key in DB_CONFIG:
         conn = get_db_connection(key)
         if conn:
-            status_report[key] = "ONLINE"
+            # TODO: Implement real-time status monitoring
+            # - Check node health
+            # - Monitor active connections
+            # - Track transaction logs
+            row_count = get_row_count(key)
+            last_update = get_last_update(key)
+            status_report[key] = {
+                "status": "ONLINE",
+                "rows": row_count,
+                "lastUpdate": last_update
+            }
             conn.close()
         else:
-            status_report[key] = "OFFLINE"
+            status_report[key] = {
+                "status": "OFFLINE",
+                "rows": 0,
+                "lastUpdate": "N/A"
+            }
     return jsonify(status_report)
 
-# ROUTE: Read/Search
+# ROUTE: Read / Search with filters and pagination
 @app.route('/movies', methods=['GET'])
 def get_movies():
-    # 1. Check if the frontend sent a search term
-    # usage: /movies?q=something
-    search_term = request.args.get('q')
+    # Get query parameters
+    offset = int(request.args.get('offset', 0))
+    limit = int(request.args.get('limit', 100))
     
-    conn = get_db_connection('node1')
+    # Filter parameters
+    title_id = request.args.get('titleId', '')
+    title = request.args.get('title', '')
+    region = request.args.get('region', '')
+
+    # Node selection
+    requested_node = request.args.get('node', 'node1')
+
+    # Routing logic
+    # - If filter is applied, node 1 will be searched
+    has_filters = (title_id or title or region)
+    
+    if has_filters:
+        target_node = 'node1' # Search everything
+    else:
+        target_node = requested_node # Browse specific node
+        
+    # Safety: Check if node exists in config
+    if target_node not in DB_CONFIG:
+        target_node = 'node1'
+
+    # Connect to DB, read from node
+    conn = get_db_connection(target_node)
+
     if not conn:
-        return jsonify({"error": "Central Node Offline"}), 500
+        return jsonify({"error": f"{target_node} is Offline"}), 500
     
     cursor = conn.cursor(dictionary=True)
     
-    if search_term:
-        # 2. If search term exists, filter by ID, Title, OR Region
-        # We use wildcards (%) to match partial text (e.g. "Avat" matches "Avatar")
-        query = """
-            SELECT * FROM movies 
-            WHERE titleId LIKE %s 
-               OR title LIKE %s 
-               OR region LIKE %s 
-            LIMIT 100
-        """
-        # Add wildcards to the search term
-        wildcard_term = f"%{search_term}%"
-        params = (wildcard_term, wildcard_term, wildcard_term)
-        cursor.execute(query, params)
-    else:
-        # 3. No search term? Return default list
-        cursor.execute("SELECT * FROM movies")
+    # Dynamic query based on filter parameters
+    # Base query
+    where_clause = " WHERE 1=1" 
+    params = []
+    
+    if title_id:
+        where_clause += " AND titleId LIKE %s"
+        params.append(f"%{title_id}%")
         
+    if title:
+        where_clause += " AND title LIKE %s"
+        params.append(f"%{title}%")
+        
+    if region:
+        where_clause += " AND region LIKE %s"
+        params.append(f"%{region}%")
+    
+    # Get Total Count for Pagination
+    # Run the count query with the same filters to get correct page numbers
+    count_query = f"SELECT COUNT(*) as total FROM movies {where_clause}"
+    cursor.execute(count_query, params)
+    total_count = cursor.fetchone()['total']
+    
+    # Get Actual Data
+    data_query = f"SELECT * FROM movies {where_clause} LIMIT %s OFFSET %s"
+    # Add limit/offset to the parameters list
+    data_params = params + [limit, offset]
+    
+    cursor.execute(data_query, data_params)
     rows = cursor.fetchall()
+    
     conn.close()
     
-    return jsonify(rows)
+    return jsonify({
+        "data": rows,
+        "total": total_count,
+        "offset": offset,
+        "limit": limit,
+        "source_node": target_node
+    })
 
 # ROUTE: Insert
 @app.route('/insert', methods=['POST'])
 def insert_movie():
-    # Ensure the LOG_MANAGER is available (from global instantiation)
-    if not LOG_MANAGER:
-        return jsonify({"error": "Distributed Log Manager not initialized."}), 500
-
     data = request.json
 
-    txn_id = str(uuid.uuid4()) 
-    record_key = data.get('titleId')
-    
-    new_value = {
-        'titleId': record_key,
-        'ordering': data.get('ordering'),
-        'title': data.get('title'),
-        'region': data.get('region'),
-        'language': data.get('language'),
-        'types': data.get('types'),
-        'attributes': data.get('attributes'),
-        'isOriginalTitle': data.get('isOriginalTitle')
-    }
-    # ------------------------------------------------------------------
-    
     params = (
         data.get('titleId'),
         data.get('ordering'),
@@ -158,67 +253,32 @@ def insert_movie():
     """
 
     # Determine Partition (Node 2 vs Node 3)
+    # US and JP go to Node 2, the rest to Node 3
     target_region = data.get('region')
-    target_node_key = 'node3' 
-    target_node_id = 3 # Use integer ID for the log
+    target_node = 'node3' 
     
     if target_region in ['US', 'JP']: 
-        target_node_key = 'node2'
-        target_node_id = 2
+        target_node = 'node2'
     
-    # logs for CONSOLE output
     logs = []
-    res_central = execute_query('node1', query, params) 
-    
-    # Performed operation in the local was a success,
-    # therefore we proceed to performing the replication
-    if res_central['success']:
-        LOG_MANAGER.log_local_commit(txn_id, 'INSERT', record_key, new_value)
-        logs.append(f"Node 1 (Central): Success & Logged")
-        LOG_MANAGER.log_replication_attempt(txn_id, target_node_id)
-        res_fragment = execute_query(target_node_key, query, params)
-        LOG_MANAGER.update_replication_status(txn_id, target_node_id, res_fragment['success'])
-        logs.append(f"{target_node_key} (Fragment): {'Success' if res_fragment['success'] else 'Failed (Log updated)'}")
-        
-    else:
-        # Local commit failed. Transaction is considered aborted. No log entry for success is written.
-        logs.append(f"Node 1 (Central): Failed - {res_central.get('error', '')}")
-        
+
+    res_central = execute_query('node1', query, params)
+    logs.append(f"Node 1 (Central): {'Success' if res_central['success'] else 'Failed ' + res_central.get('error', '')}")
+
+    res_fragment = execute_query(target_node, query, params)
+    logs.append(f"{target_node} (Fragment): {'Success' if res_fragment['success'] else 'Failed ' + res_fragment.get('error', '')}")
+
     return jsonify({
         "message": "Transaction Processed",
         "logs": logs,
-        "target_node": target_node_key, # Corrected to use target_node_key
-        "txn_id": txn_id # Include txn_id in the response for testing/debugging
+        "target_node": target_node
     })
 
 # ROUTE: Update
 @app.route('/update', methods=['POST'])
 def update_movie():
-    # Ensure the LOG_MANAGER is available (from global instantiation)
-    if not LOG_MANAGER:
-        return jsonify({"error": "Distributed Log Manager not initialized."}), 500
-
     data = request.json
     
-    # 1. Transaction Setup & Log Data Preparation
-    txn_id = str(uuid.uuid4()) 
-    record_key = data.get('titleId')
-    
-    # NOTE: In a real system, you would fetch the 'Before Image' (old_value) 
-    # from the database before the update for UNDO operations.
-    # For this system, we only create the 'After Image' for REDO.
-    new_value = {
-        'titleId': record_key,
-        'ordering': data.get('ordering'),
-        'title': data.get('title'),
-        'region': data.get('region'),
-        'language': data.get('language'),
-        'types': data.get('types'),
-        'attributes': data.get('attributes'),
-        'isOriginalTitle': data.get('isOriginalTitle')
-    }
-    
-    # 2. Prepare Query and Parameters
     title_id = data.get('titleId')
     new_title = data.get('title')
     new_ordering = data.get('ordering')
@@ -228,89 +288,73 @@ def update_movie():
     
     logs = []
 
-    # 3. Update Central Node (Node 1) - Always
+    # Update Central Node (Node 1)
     res_central = execute_query('node1', query, params)
+    logs.append(f"Node 1 Update: {'Success' if res_central['success'] else 'Failed'}")
     
-    if res_central['success']:
-        # Log the successful local commit (Redo log)
-        LOG_MANAGER.log_local_commit(txn_id, 'UPDATE', record_key, new_value)
-        logs.append(f"Node 1 (Central): Success & Logged")
+    # Update Fragments (Node 2 AND Node 3)
+    res_node2 = execute_query('node2', query, params)
+    logs.append(f"Node 2 Update: {'Success' if res_node2['success'] else 'Failed'}")
+    
+    res_node3 = execute_query('node3', query, params)
+    logs.append(f"Node 3 Update: {'Success' if res_node3['success'] else 'Failed'}")
 
-        # 4. Update Fragments (Replication)
-        
-        # Log and attempt update on Node 2
-        LOG_MANAGER.log_replication_attempt(txn_id, 2)
-        res_node2 = execute_query('node2', query, params)
-        LOG_MANAGER.update_replication_status(txn_id, 2, res_node2['success'])
-        logs.append(f"Node 2 Update: {'Success' if res_node2['success'] else 'Failed (Log updated)'}")
-        
-        # Log and attempt update on Node 3
-        LOG_MANAGER.log_replication_attempt(txn_id, 3)
-        res_node3 = execute_query('node3', query, params)
-        LOG_MANAGER.update_replication_status(txn_id, 3, res_node3['success'])
-        logs.append(f"Node 3 Update: {'Success' if res_node3['success'] else 'Failed (Log updated)'}")
-
-    else:
-        # Local commit failed. Transaction is considered aborted.
-        logs.append(f"Node 1 (Central): Failed - {res_central.get('error', '')}")
-        
     return jsonify({
         "message": "Update Processed",
-        "logs": logs,
-        "txn_id": txn_id
+        "logs": logs
     })
+
 # ROUTE: Delete
 @app.route('/delete', methods=['POST'])
 def delete_movie():
-    # Ensure the LOG_MANAGER is available
-    if not LOG_MANAGER:
-        return jsonify({"error": "Distributed Log Manager not initialized."}), 500
-
     data = request.json
     title_id = data.get('titleId')
     
-    # 1. Transaction Setup
-    txn_id = str(uuid.uuid4())
-    
-    # For a DELETE operation, the "After Image" (new_value) is essentially empty 
-    # because the record no longer exists. We pass an empty dict or a marker.
-    new_value = {"action": "DELETE", "titleId": title_id}
-
     query = "DELETE FROM movies WHERE titleId = %s"
     params = (title_id,)
     
     logs = []
 
-    # 2. Delete from Central (Node 1) - Always First
+    # Delete from Central (Node 1)
     res_central = execute_query('node1', query, params)
+    logs.append(f"Node 1 Delete: {'Success' if res_central['success'] else 'Failed'}")
     
-    if res_central['success']:
-        # --- LOGGING STEP A: Local Commit ---
-        # Log that the Primary Node (Node 1) successfully performed the action.
-        # This is the "Point of No Return" for the transaction.
-        LOG_MANAGER.log_local_commit(txn_id, 'DELETE', title_id, new_value)
-        logs.append(f"Node 1 (Central): Success & Logged")
+    # Delete from Fragments (Node 2 AND Node 3)
+    res_node2 = execute_query('node2', query, params)
+    logs.append(f"Node 2 Delete: {'Success' if res_node2['success'] else 'Failed'}")
 
-        # --- LOGGING STEP B: Replication to Node 2 ---
-        LOG_MANAGER.log_replication_attempt(txn_id, 2)
-        res_node2 = execute_query('node2', query, params)
-        LOG_MANAGER.update_replication_status(txn_id, 2, res_node2['success'])
-        logs.append(f"Node 2 Delete: {'Success' if res_node2['success'] else 'Failed (Log updated)'}")
-
-        # --- LOGGING STEP C: Replication to Node 3 ---
-        LOG_MANAGER.log_replication_attempt(txn_id, 3)
-        res_node3 = execute_query('node3', query, params)
-        LOG_MANAGER.update_replication_status(txn_id, 3, res_node3['success'])
-        logs.append(f"Node 3 Delete: {'Success' if res_node3['success'] else 'Failed (Log updated)'}")
-
-    else:
-        # If Central Node fails, the whole transaction is aborted.
-        logs.append(f"Node 1 (Central): Failed - {res_central.get('error', '')}")
+    res_node3 = execute_query('node3', query, params)
+    logs.append(f"Node 3 Delete: {'Success' if res_node3['success'] else 'Failed'}")
 
     return jsonify({
         "message": "Delete Processed",
-        "logs": logs,
-        "txn_id": txn_id
+        "logs": logs
+    })
+
+# ROUTE: Simulate Concurrency
+@app.route('/simulate-concurrency', methods=['POST'])
+def simulate_concurrency():
+    """
+    TODO: Implement concurrency simulation
+    
+    This endpoint should:
+    1. Create multiple concurrent transactions
+    2. Test different isolation levels
+    3. Simulate race conditions
+    4. Test deadlock scenarios
+    5. Monitor transaction conflicts
+    6. Return detailed logs of concurrent operations
+    
+    Example implementation:
+    - Spawn multiple threads/processes
+    - Execute simultaneous reads/writes
+    - Track transaction timing and conflicts
+    - Return results showing concurrency behavior
+    """
+    
+    return jsonify({
+        "message": "Concurrency simulation not yet implemented",
+        "status": "TODO"
     })
 
 if __name__ == '__main__':
