@@ -9,7 +9,17 @@ let currentFilters = {
 
 async function loadNodeData(nodeNumber) {
     currentOffset = 0; // Reset offset when loading new node
-    await fetchMovies();
+    
+    // Clear the table and wait for user input
+    const tableBody = document.getElementById('table-body');
+    tableBody.innerHTML = '<tr><td colspan="9" style="text-align: center; color: #666;"><i>Select a filter and click "Apply Filters" to load data from the distributed network.</i></td></tr>';
+    
+    // Reset counts
+    document.getElementById('current-rows').textContent = '0';
+    document.getElementById('total-rows').textContent = '-';
+    
+    // Hide load more button
+    document.getElementById('load-more-btn').style.display = 'none';
 }
 
 async function fetchMovies() {
