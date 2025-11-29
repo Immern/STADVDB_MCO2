@@ -60,9 +60,6 @@ def get_db_connection(node_key):
     try:
         config = DB_CONFIG[node_key]
         conn = mysql.connector.connect(**config)
-        
-        
-        
         return conn
     except Exception as e:
         print(f"Error connecting to {node_key}: {e}")
@@ -77,18 +74,18 @@ def execute_query(node_key, query, params=None):
         cursor = conn.cursor()
         cursor.execute(query, params or ())
         conn.commit()
+        rows_affected = cursor.rowcount
         cursor.close()
         conn.close()
-        return {"success": True}
+        return {"success": True, "rows_affected": rows_affected}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": str(e), "rows_affected": 0}
 
 def get_row_count(node_key):
     """Get the total number of rows in a node"""
     conn = get_db_connection(node_key)
     if not conn:
         return 0
-    
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM movies")
@@ -167,73 +164,72 @@ def get_movies():
 
     # Node selection
     requested_node = request.args.get('node', 'node1')
+    if requested_node not in DB_CONFIG:
+        requested_node = 'node1'
 
-    # Routing logic
-    # - If filter is applied, node 1 will be searched
-    has_filters = (title_id or title or region)
-    
-    if has_filters:
-        target_node = 'node1' # Search everything
-    else:
-        target_node = requested_node # Browse specific node
-        
-    # Safety: Check if node exists in config
-    if target_node not in DB_CONFIG:
-        target_node = 'node1'
-
-    # Connect to DB, read from node
-    conn = get_db_connection(target_node)
-
-    if not conn:
-        return jsonify({"error": f"{target_node} is Offline"}), 500
-    
-    cursor = conn.cursor(dictionary=True)
-    
-    # Dynamic query based on filter parameters
-    # Base query
+    # Build Query
     where_clause = " WHERE 1=1" 
     params = []
-    
     if title_id:
         where_clause += " AND titleId LIKE %s"
         params.append(f"%{title_id}%")
-        
     if title:
         where_clause += " AND title LIKE %s"
         params.append(f"%{title}%")
-        
     if region:
         where_clause += " AND region LIKE %s"
         params.append(f"%{region}%")
+
+    # 2. STRATEGY: Check Local Node First
+    target_node = requested_node
+    conn = get_db_connection(target_node)
     
-    # Get Total Count for Pagination
-    # Run the count query with the same filters to get correct page numbers
-    count_query = f"SELECT COUNT(*) as total FROM movies {where_clause}"
-    cursor.execute(count_query, params)
-    total_count = cursor.fetchone()['total']
-    
-    # Get Actual Data
-    data_query = f"SELECT * FROM movies {where_clause} LIMIT %s OFFSET %s"
-    # Add limit/offset to the parameters list
-    data_params = params + [limit, offset]
-    
-    cursor.execute(data_query, data_params)
-    rows = cursor.fetchall()
-    
-    conn.close()
-    
+    rows = []
+    total_count = 0
+    source = target_node
+
+    # If connection works, try to fetch
+    if conn:
+        cursor = conn.cursor(dictionary=True)
+        # Count
+        cursor.execute(f"SELECT COUNT(*) as total FROM movies {where_clause}", params)
+        total_count = cursor.fetchone()['total']
+        
+        # If local node has data OR if no filters are applied (browsing mode), use local
+        # If local has 0 results BUT filters are applied, we might be looking for data in another node
+        if total_count > 0 or (not title_id and not title and not region):
+            cursor.execute(f"SELECT * FROM movies {where_clause} LIMIT %s OFFSET %s", params + [limit, offset])
+            rows = cursor.fetchall()
+            conn.close()
+        else:
+            # Local returned 0 results, but we are searching. 
+            # 3. STRATEGY: Fallback to Central (Node 1) if we are on a fragment
+            conn.close()
+            if requested_node != 'node1':
+                print(f"Search on {requested_node} yielded 0 results. Checking Central...")
+                conn_central = get_db_connection('node1')
+                if conn_central:
+                    cursor_central = conn_central.cursor(dictionary=True)
+                    cursor_central.execute(f"SELECT COUNT(*) as total FROM movies {where_clause}", params)
+                    total_count = cursor_central.fetchone()['total']
+                    cursor_central.execute(f"SELECT * FROM movies {where_clause} LIMIT %s OFFSET %s", params + [limit, offset])
+                    rows = cursor_central.fetchall()
+                    conn_central.close()
+                    source = 'node1 (Fallback)'
+
     return jsonify({
         "data": rows,
         "total": total_count,
-        "offset": offset,
-        "limit": limit,
-        "source_node": target_node
+        "source_node": source
     })
 
 # ROUTE: Insert
 @app.route('/insert', methods=['POST'])
 def insert_movie():
     data = request.json
+
+    # Determine current node
+    current_node = request.args.get('node', data.get('node', 'node1'))
 
     params = (
         data.get('titleId'),
@@ -252,32 +248,53 @@ def insert_movie():
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
     """
 
-    # Determine Partition (Node 2 vs Node 3)
-    # US and JP go to Node 2, the rest to Node 3
+    # Determine Correct Partition
     target_region = data.get('region')
-    target_node = 'node3' 
-    
+    correct_fragment = 'node3' 
     if target_region in ['US', 'JP']: 
-        target_node = 'node2'
+        correct_fragment = 'node2'
     
     logs = []
 
-    res_central = execute_query('node1', query, params)
-    logs.append(f"Node 1 (Central): {'Success' if res_central['success'] else 'Failed ' + res_central.get('error', '')}")
+    # SCENARIO 1: User is on Node 1 (Central)
+    if current_node == 'node1':
+        # "Update central node first, then identify which fragmented node to modify"
+        res_central = execute_query('node1', query, params)
+        logs.append(f"Node 1 (Local): {'Success' if res_central['success'] else 'Failed'}")
+        
+        # Then update fragment
+        res_frag = execute_query(correct_fragment, query, params)
+        logs.append(f"{correct_fragment} (Fragment): {'Success' if res_frag['success'] else 'Failed'}")
 
-    res_fragment = execute_query(target_node, query, params)
-    logs.append(f"{target_node} (Fragment): {'Success' if res_fragment['success'] else 'Failed ' + res_fragment.get('error', '')}")
+    # SCENARIO 2 & 3: User is on a Fragment (Node 2 or 3)
+    else:
+        # Check if the data belongs here
+        if current_node == correct_fragment:
+            # SCENARIO 2: Data belongs to current node
+            # "Update current node first then update central node"
+            res_local = execute_query(current_node, query, params)
+            logs.append(f"{current_node} (Local): {'Success' if res_local['success'] else 'Failed'}")
+            
+            res_central = execute_query('node1', query, params)
+            logs.append(f"Node 1 (Central): {'Success' if res_central['success'] else 'Failed'}")
+        else:
+            # SCENARIO 3: Data belongs to OTHER fragment
+            # "Fetch from other fragmented node" (In insert terms: Insert to other fragment)
+            logs.append(f"{current_node} (Local): Skipped (Data belongs to {correct_fragment})")
+            
+            res_other = execute_query(correct_fragment, query, params)
+            logs.append(f"{correct_fragment} (Remote): {'Success' if res_other['success'] else 'Failed'}")
+            
+            res_central = execute_query('node1', query, params)
+            logs.append(f"Node 1 (Central): {'Success' if res_central['success'] else 'Failed'}")
 
-    return jsonify({
-        "message": "Transaction Processed",
-        "logs": logs,
-        "target_node": target_node
-    })
+    return jsonify({"message": "Insert Processed", "logs": logs})
 
 # ROUTE: Update
 @app.route('/update', methods=['POST'])
 def update_movie():
     data = request.json
+    current_node = request.args.get('node', data.get('node', 'node1'))
     
     title_id = data.get('titleId')
     new_title = data.get('title')
@@ -288,26 +305,53 @@ def update_movie():
     
     logs = []
 
-    # Update Central Node (Node 1)
-    res_central = execute_query('node1', query, params)
-    logs.append(f"Node 1 Update: {'Success' if res_central['success'] else 'Failed'}")
-    
-    # Update Fragments (Node 2 AND Node 3)
-    res_node2 = execute_query('node2', query, params)
-    logs.append(f"Node 2 Update: {'Success' if res_node2['success'] else 'Failed'}")
-    
-    res_node3 = execute_query('node3', query, params)
-    logs.append(f"Node 3 Update: {'Success' if res_node3['success'] else 'Failed'}")
+    # SCENARIO 1: User is on Node 1 (Central)
+    if current_node == 'node1':
+        # "Update central node first"
+        res_central = execute_query('node1', query, params)
+        logs.append(f"Node 1 (Local): {'Success' if res_central['success'] else 'Failed'}")
+        
+        # "Identify which fragmented node to modify"
+        # Strategy: We try Node 2. If rows_affected > 0, we found it. If not, try Node 3.
+        res_node2 = execute_query('node2', query, params)
+        if res_node2['success'] and res_node2['rows_affected'] > 0:
+            logs.append(f"Node 2 (Fragment): Updated (Found target)")
+        else:
+            # Wasn't in Node 2, must be Node 3
+            res_node3 = execute_query('node3', query, params)
+            logs.append(f"Node 3 (Fragment): {'Updated' if res_node3['rows_affected'] > 0 else 'Target Not Found'}")
 
-    return jsonify({
-        "message": "Update Processed",
-        "logs": logs
-    })
+    # SCENARIO 2 & 3: User is on Fragment
+    else:
+        # "Update current node first"
+        res_local = execute_query(current_node, query, params)
+        
+        if res_local['success'] and res_local['rows_affected'] > 0:
+            # SCENARIO 2: Data was local
+            logs.append(f"{current_node} (Local): Updated")
+            # "Then update central node"
+            execute_query('node1', query, params)
+            logs.append("Node 1 (Central): Updated")
+        else:
+            # SCENARIO 3: Data to be updated is NOT in current node
+            logs.append(f"{current_node} (Local): 0 Rows Affected (Data is Remote)")
+            
+            # "Fetch from other fragmented node" -> Update the other fragment
+            other_node = 'node3' if current_node == 'node2' else 'node2'
+            res_other = execute_query(other_node, query, params)
+            logs.append(f"{other_node} (Remote): {'Updated' if res_other['rows_affected'] > 0 else 'Not Found'}")
+            
+            # "Then update central node"
+            execute_query('node1', query, params)
+            logs.append("Node 1 (Central): Updated")
+
+    return jsonify({"message": "Update Processed", "logs": logs})
 
 # ROUTE: Delete
 @app.route('/delete', methods=['POST'])
 def delete_movie():
     data = request.json
+    current_node = request.args.get('node', data.get('node', 'node1'))
     title_id = data.get('titleId')
     
     query = "DELETE FROM movies WHERE titleId = %s"
@@ -315,21 +359,34 @@ def delete_movie():
     
     logs = []
 
-    # Delete from Central (Node 1)
-    res_central = execute_query('node1', query, params)
-    logs.append(f"Node 1 Delete: {'Success' if res_central['success'] else 'Failed'}")
-    
-    # Delete from Fragments (Node 2 AND Node 3)
-    res_node2 = execute_query('node2', query, params)
-    logs.append(f"Node 2 Delete: {'Success' if res_node2['success'] else 'Failed'}")
+    # Logic mirrors update exactly
+    if current_node == 'node1':
+        res_central = execute_query('node1', query, params)
+        logs.append(f"Node 1 (Local): {'Success' if res_central['success'] else 'Failed'}")
+        
+        # Try Node 2
+        res_node2 = execute_query('node2', query, params)
+        if res_node2['rows_affected'] > 0:
+            logs.append("Node 2 (Fragment): Deleted")
+        else:
+            res_node3 = execute_query('node3', query, params)
+            logs.append(f"Node 3 (Fragment): {'Deleted' if res_node3['rows_affected'] > 0 else 'Not Found'}")
 
-    res_node3 = execute_query('node3', query, params)
-    logs.append(f"Node 3 Delete: {'Success' if res_node3['success'] else 'Failed'}")
+    else:
+        res_local = execute_query(current_node, query, params)
+        if res_local['rows_affected'] > 0:
+            logs.append(f"{current_node} (Local): Deleted")
+            execute_query('node1', query, params)
+            logs.append("Node 1 (Central): Deleted")
+        else:
+            logs.append(f"{current_node} (Local): 0 Rows (Remote Data)")
+            other_node = 'node3' if current_node == 'node2' else 'node2'
+            res_other = execute_query(other_node, query, params)
+            logs.append(f"{other_node} (Remote): {'Deleted' if res_other['rows_affected'] > 0 else 'Not Found'}")
+            execute_query('node1', query, params)
+            logs.append("Node 1 (Central): Deleted")
 
-    return jsonify({
-        "message": "Delete Processed",
-        "logs": logs
-    })
+    return jsonify({"message": "Delete Processed", "logs": logs})
 
 # ROUTE: Simulate Concurrency
 @app.route('/simulate-concurrency', methods=['POST'])
