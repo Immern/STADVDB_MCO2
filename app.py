@@ -3,6 +3,32 @@ from flask_cors import CORS
 import mysql.connector
 from datetime import datetime
 
+import uuid
+from datetime import datetime
+import json
+from dotenv import load_dotenv
+import os
+from log_manager import DistributedLogManager
+from db_helpers import get_db_connection, DB_CONFIG    
+
+load_dotenv()
+try:
+    LOCAL_NODE_KEY = os.environ.get('LOCAL_NODE_KEY', 'node1') 
+    LOCAL_NODE_ID = int(LOCAL_NODE_KEY.replace('node', ''))
+    print(f"Local Node Key: {LOCAL_NODE_KEY}, ID: {LOCAL_NODE_ID}")
+except Exception as e:
+    print(f"Error determining local node from environment: {e}")
+    LOCAL_NODE_KEY = 'node3'
+    LOCAL_NODE_ID = 3
+# Initialize Log Manager for Local Node
+try:
+    LOCAL_DB_CONN = mysql.connector.connect(**DB_CONFIG[LOCAL_NODE_KEY])
+    LOG_MANAGER = DistributedLogManager(LOCAL_NODE_ID, LOCAL_DB_CONN)
+    print(f"Log Manager initialized for {LOCAL_NODE_KEY}. Recovery startup complete.")
+except Exception as e:
+    print(f"Could not initialize Log Manager or connect to {LOCAL_NODE_KEY}: {e}")
+    LOG_MANAGER = None
+
 # Initialize the Flask application
 app = Flask(__name__)
 CORS(app)
@@ -34,10 +60,28 @@ def get_db_connection(node_key):
     try:
         config = DB_CONFIG[node_key]
         conn = mysql.connector.connect(**config)
+        
+        
+        
         return conn
     except Exception as e:
         print(f"Error connecting to {node_key}: {e}")
         return None
+    
+def execute_query(node_key, query, params=None):
+    conn = get_db_connection(node_key)
+    if not conn:
+        return {"success": False, "error": "Connection failed"}
+    
+    try:
+        cursor = conn.cursor()
+        cursor.execute(query, params or ())
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 def get_row_count(node_key):
     """Get the total number of rows in a node"""
