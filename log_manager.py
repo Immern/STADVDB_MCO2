@@ -1,13 +1,21 @@
 import uuid
 from datetime import datetime
 import json
-from db_helpers import get_db_connection
+# Import necessary function for the simulation block at the bottom
+from db_helpers import get_db_connection 
 
 class DistributedLogManager:
+    """
+    Manages transaction logs for the local node (Node 1, 2, or 3).
+    Implements Deferred (NO-UNDO/REDO) logging protocol tailored for
+    distributed updates from the coordinator (Node 1).
+    """
     def __init__(self, node_id, db_connection, auto_commit_log=True):
         self.node_id = node_id  # 1 (Central), 2, or 3
         self.db_conn = db_connection
-        self.auto_commit_log = auto_commit_log
+        # Controls whether log operations themselves are immediately committed.
+        # Typically, this should be True for durability, but made configurable.
+        self.auto_commit_log = auto_commit_log 
         self._initialize_log_table()
 
     def _initialize_log_table(self):
@@ -21,108 +29,141 @@ class DistributedLogManager:
             new_value JSON, 
             replication_target INT, 
             status VARCHAR(30) 
-            -- Note: 'old_value' omitted here for true Deferred (NO-UNDO), 
-            -- but recommended for validation (as discussed previously).
+            -- Note: 'old_value' omitted here for true Deferred (NO-UNDO)
         );
         """
-       
+        try:
+            cursor = self.db_conn.cursor()
+            cursor.execute(sql)
+            cursor.close()
+            # Ensure table creation is committed, regardless of self.auto_commit_log
+            self.db_conn.commit() 
+            print(f"Transaction log table ensured on Node {self.node_id}.")
+        except Exception as e:
+            print(f"Error initializing log table on Node {self.node_id}: {e}")
+
+    def _commit_if_needed(self):
+        """Commits the log operation if auto_commit_log is True."""
+        if self.auto_commit_log:
+            try:
+                self.db_conn.commit()
+            except Exception as e:
+                print(f"Error committing log record on Node {self.node_id}: {e}")
+                # Log commit failed, but application continues (potentially losing the log record)
 
     def log_local_commit(self, txn_id, op_type, key, new_data):
+        """Logs the final successful commit event for a transaction."""
         sql = """
         INSERT INTO transaction_logs 
         (transaction_id, log_timestamp, operation_type, record_key, new_value, replication_target, status)
         VALUES (%s, %s, %s, %s, %s, NULL, 'LOCAL_COMMIT');
         """
         params = (
-            txn_id,
-            datetime.now(),
-            op_type,
-            key,
+            txn_id, 
+            datetime.now(), 
+            op_type, 
+            key, 
             json.dumps(new_data)
         )
-        
-        # Cursor is for tracking the log transactions
         try:
             cursor = self.db_conn.cursor()
             cursor.execute(sql, params)
-
-            # --- Conditional Commit and Message ---
-            if self.auto_commit_log:
-                self.db_conn.commit() 
-                status_message = "LOG COMMITTED (DURABLE)."
-            else:
-                # Log entry is only in the connection's transaction buffer
-                status_message = "LOG EXECUTED (PENDING MANUAL COMMIT)."
-            # ----------------------------------------------------
-            
             cursor.close()
-            print(f"Log: Transaction {txn_id} successfully recorded on Node {self.node_id} ({status_message})")
-
+            self._commit_if_needed() # Use the conditional commit helper
+            print(f"Log: Transaction {txn_id} recorded on Node {self.node_id}.")
         except Exception as e:
-            print(f"FATAL LOGGING ERROR for {txn_id}: {e}")
-
-    # --- Step 2: Logging Replication Attempts (Handles Case #1 and #3) ---
+            print(f"Error logging LOCAL_COMMIT for {txn_id}: {e}")
 
     def log_replication_attempt(self, txn_id, target_node):
-        """Logs the start of a replication attempt to a remote node."""
+        """Logs that replication is being attempted for a specific target node."""
         sql = """
         INSERT INTO transaction_logs 
         (transaction_id, log_timestamp, operation_type, record_key, new_value, replication_target, status)
         VALUES (%s, %s, 'REPLICATE', NULL, NULL, %s, 'REPLICATION_PENDING');
         """
-        # Fetch the original new_value if needed, but here we just log the intent.
-        
-        params = (txn_id, datetime.now(), target_node)
-        cursor = self.db_conn.cursor()
-        cursor.execute(sql, params)
-        self.db_conn.commit()
-        cursor.close()
-        print(f"Log: Transaction {txn_id} replication PENDING to Node {target_node}.")
-    
+        params = (
+            txn_id, 
+            datetime.now(), 
+            target_node
+        )
+        try:
+            cursor = self.db_conn.cursor()
+            cursor.execute(sql, params)
+            cursor.close()
+            self._commit_if_needed() # Use the conditional commit helper
+            print(f"Log: Transaction {txn_id} replication PENDING to Node {target_node}.")
+        except Exception as e:
+            print(f"Error logging REPLICATION_ATTEMPT for {txn_id} to {target_node}: {e}")
+
     def update_replication_status(self, txn_id, target_node, success=True):
         """Updates the status after a replication attempt (success or failure)."""
         new_status = 'REPLICATION_SUCCESS' if success else 'REPLICATION_FAILED'
-        sql = """
-        UPDATE transaction_logs 
-        SET status = %s 
-        WHERE transaction_id = %s AND replication_target = %s AND status = 'REPLICATION_PENDING';
+        
+        # 1. Update existing attempt log
+        update_sql = """
+        UPDATE transaction_logs
+        SET status = %s, log_timestamp = %s
+        WHERE transaction_id = %s AND replication_target = %s AND status = 'REPLICATION_PENDING'
+        ORDER BY log_id DESC 
+        LIMIT 1;
         """
-        params = (new_status, txn_id, target_node)
-        cursor = self.db_conn.cursor()
-        cursor.execute(sql, params)
-        self.db_conn.commit()
-        cursor.close()
-        print(f"Log: Transaction {txn_id} replication status updated to {new_status} for Node {target_node}.")
+        update_params = (new_status, datetime.now(), txn_id, target_node)
 
+        try:
+            cursor = self.db_conn.cursor()
+            cursor.execute(update_sql, update_params)
+            
+            if cursor.rowcount == 0:
+                # 2. If no PENDING log was found to update, insert the final status
+                insert_sql = """
+                INSERT INTO transaction_logs 
+                (transaction_id, log_timestamp, operation_type, record_key, new_value, replication_target, status)
+                VALUES (%s, %s, 'REPLICATE', NULL, NULL, %s, %s);
+                """
+                insert_params = (txn_id, datetime.now(), target_node, new_status)
+                cursor.execute(insert_sql, insert_params)
+            
+            cursor.close()
+            self._commit_if_needed() # Use the conditional commit helper
+            print(f"Log: Transaction {txn_id} replication status updated to {new_status} for Node {target_node}.")
+        except Exception as e:
+            print(f"Error updating REPLICATION_STATUS for {txn_id} to {target_node}: {e}")
+            
     # --- Step 3: Global Failure Recovery Logic (Handles Case #2 and #4) ---
 
     def recover_missed_writes(self, last_known_commit_time):
+        """
+        Runs the REDO recovery procedure for the local node.
+        """
+        print(f"--- Running Recovery Check for Node {self.node_id} since: {last_known_commit_time} ---")
         missed_logs = self._simulate_fetch_missed_logs(last_known_commit_time)
 
-        for log in missed_logs:
-            print(f"   -> REDO: Applying missed {log['operation_type']} for record {log['record_key']}...")
+        if not missed_logs:
+            print("No missed transactions found to REDO.")
             
-            # --- CALLING THE NEW REDO HELPER ---
+        for log in missed_logs:
+            print(f" -> REDO: Applying missed {log['operation_type']} for record {log['record_key']} (Txn: {log['transaction_id'][:8]}...)")
+            
+            # --- CALLING THE REDO HELPER ---
             if self._apply_redo_to_main_db(log):
-                print("      -> Successfully applied. Must acknowledge back to Node 1.")
+                # In a real DDM, the node would now acknowledge success back to the coordinator (Node 1)
+                pass
             
         print(f"--- Recovery for Node {self.node_id} Complete ---")
 
     def _simulate_fetch_missed_logs(self, last_time):
         """
-        Placeholder: In a real distributed system, this would be a network call
-        to the Central Node (Node 1) or other active Fabric Nodes (Node 2/3).
+        Placeholder: Simulates fetching missed transactions from the coordinator.
         
-        For simulation, you will likely query the log table of the active node(s).
+        If this is Node 2 or 3, it returns a simulated missed transaction.
         """
-        # For simplicity in the example, we'll return a sample missed log entry
         if self.node_id in [2, 3]:
             # Simulate a missed log that was committed on Node 1 while Node 2/3 was down
             return [{
                 'transaction_id': str(uuid.uuid4()),
-                'operation_type': 'UPDATE',
-                'record_key': 'A101',
-                'new_value': json.dumps({"column": "value_after_recovery"}),
+                'operation_type': 'UPDATE', # Use UPDATE for recovery simulation
+                'record_key': 'tt0099685',  # A real IMDb key for plausibility
+                'new_value': json.dumps({"title": "The Big Lebowski (Restored)", "region": "US"}),
                 'status': 'LOCAL_COMMIT',
                 'log_timestamp': datetime.now()
             }]
@@ -140,7 +181,6 @@ class DistributedLogManager:
         key = log_entry['record_key']
         
         # Load the JSON data that represents the state AFTER the change
-        # Note: new_value is stored as a JSON string in the log table
         new_data = json.loads(log_entry['new_value']) 
 
         cursor = self.db_conn.cursor()
@@ -148,19 +188,18 @@ class DistributedLogManager:
         try:
             if op_type == 'INSERT':
                 # --- REDO INSERT ---
-                columns = ['titleId', 'ordering', 'title', 'region', 'language', 'types', 'attributes', 'isOriginalTitle']
+                columns = list(new_data.keys()) 
                 placeholders = ', '.join(['%s'] * len(columns))
                 column_names = ', '.join(columns)
 
-                # Ensure params are ordered according to the 'columns' list
-                params = tuple(new_data.get(col) for col in columns)
+                params = tuple(new_data[col] for col in columns)
 
                 query = f"""
                     INSERT INTO movies 
                     ({column_names}) 
                     VALUES ({placeholders})
-                    ON DUPLICATE KEY UPDATE title=VALUES(title) 
-                    -- ^ Ensures idempotent operation: if the row already exists (e.g., due to crash), it updates instead of failing.
+                    ON DUPLICATE KEY UPDATE title=VALUES(title); 
+                    -- ^ Ensures idempotent operation (REDO principle)
                 """
                 cursor.execute(query, params)
 
@@ -170,6 +209,7 @@ class DistributedLogManager:
                 set_clauses = [f"{col} = %s" for col in new_data.keys() if col != 'titleId']
                 
                 # Parameters: values for SET clause, followed by the WHERE clause value (key)
+                # Assumes 'key' (record_key) maps to the primary key, 'titleId'
                 params = tuple(new_data[col] for col in new_data.keys() if col != 'titleId') + (key,)
                 
                 query = f"UPDATE movies SET {', '.join(set_clauses)} WHERE titleId = %s"
@@ -191,38 +231,44 @@ class DistributedLogManager:
             return False
         finally:
             cursor.close()
-# --- Example Usage and Simulation ---
+
+# --- Example Usage and Simulation (Requires db_helpers) ---
 
 def simulate_failure_recovery(log_manager_central, log_manager_fabric):
-    """Simulates Case #1 and Case #2/4 using the Log Manager."""
+    """Simulates a multi-node transaction and subsequent crash recovery."""
     
+    print("\n" + "="*50)
+    print("SIMULATION START: LOCAL COMMIT & REPLICATION FAILURE")
+    print("="*50)
+
     # 1. Simulate a successful local transaction on a Fabric Node (N2)
     txn1_id = str(uuid.uuid4())
-    log_manager_fabric.log_local_commit(txn1_id, 'UPDATE', 'R42', {"price": 150.0})
+    log_manager_fabric.log_local_commit(txn1_id, 'UPDATE', 'tt0099685', {"title": "The Big Lebowski (Local Edit)"})
     
     # 2. Simulate **Case #1** (Replication from Node 2 to Central Node Fails)
     log_manager_fabric.log_replication_attempt(txn1_id, 1)
-    
-    # Simulate a network or DB failure on Node 1
-    # Node 2 logs the failure and holds the log for retry
     log_manager_fabric.update_replication_status(txn1_id, 1, success=False)
     
-    print("\n--- Simulating Node 1 (Central Node) Crash ---")
+    print("\n" + "="*50)
+    print("SIMULATION PHASE 2: CENTRAL NODE CRASH")
+    print("="*50)
+    
+    # Set the crash time marker
     last_commit_time_N1 = datetime.now()
     
     # A successful transaction occurs on Node 2 while Node 1 is down
     txn2_id = str(uuid.uuid4())
-    log_manager_fabric.log_local_commit(txn2_id, 'INSERT', 'R50', {"name": "New Item"})
-    log_manager_fabric.update_replication_status(txn2_id, 1, success=False) # Replication fails because N1 is down
+    log_manager_fabric.log_local_commit(txn2_id, 'INSERT', 'tt0000001', {"titleId": "tt0000001", "ordering": 1, "title": "Crash Test Movie", "region": "ZZ", "language": None, "types": None, "attributes": None, "isOriginalTitle": 0})
+    log_manager_fabric.update_replication_status(txn2_id, 1, success=False) # Replication fails because N1 is logically 'down'
 
     # 3. Simulate **Case #2** (Central Node Recovers and missed transactions)
-    print(f"\n--- Simulating Central Node (Node 1) Recovering ---")
+    print("\n" + "="*50)
+    print(f"SIMULATION PHASE 3: CENTRAL NODE (N1) RECOVERY ({datetime.now().strftime('%H:%M:%S')})")
+    print("="*50)
+    
+    # When Node 1 runs recover_missed_writes, it triggers the _simulate_fetch_missed_logs 
+    # which returns a dummy transaction for REDO.
     log_manager_central.recover_missed_writes(last_commit_time_N1)
-    # The recovery logic here would look at the logs of N2 and N3 to find txn2_id and re-apply it.
 
-# Initialize the log managers (assuming they connect to their respective DBs)
-log_manager_N1 = DistributedLogManager(node_id=1, db_connection=get_db_connection('node1'))
-log_manager_N2 = DistributedLogManager(node_id=2, db_connection=get_db_connection('node2'))
-
-# Run the simulation
-simulate_failure_recovery(log_manager_N1, log_manager_N2)
+# Note: The actual simulation block below requires a running database connection 
+# from the main environment to execute successfully.
