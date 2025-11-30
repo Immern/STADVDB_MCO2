@@ -32,9 +32,9 @@ async function detectLocalNode() {
 
 function applySettings() {
     const isolationLevel = document.getElementById('isolation-level').value;
-    const failureSimulation = document.getElementById('failure-simulation').value;
+    const autoCommitToggle = document.getElementById('autocommit-toggle').checked;
     
-    console.log('Applying settings:', { isolationLevel, failureSimulation });
+    console.log('Applying settings:', { isolationLevel, autoCommit: autoCommitToggle });
     
     // Map frontend values to backend expected format
     const isolationLevelMap = {
@@ -46,7 +46,7 @@ function applySettings() {
     
     const settingsPayload = {
         isolationLevel: isolationLevelMap[isolationLevel],
-        failureSimulation: failureSimulation
+        autoCommit: autoCommitToggle.toString()
     };
     
     // Send settings to backend
@@ -60,7 +60,8 @@ function applySettings() {
     .then(response => response.json())
     .then(data => {
         console.log('Backend response:', data);
-        alert(`Settings applied successfully:\n${data.logs.join('\n')}`);
+        const mode = autoCommitToggle ? 'Auto Commit' : 'Manual 2PC';
+        alert(`Settings applied successfully!\n\nIsolation Level: ${isolationLevelMap[isolationLevel]}\nTransaction Mode: ${mode}\n\n${data.logs ? data.logs.join('\n') : ''}`);
     })
     .catch((error) => {
         console.error('Error sending settings:', error);
@@ -140,4 +141,39 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     // Load initial data for the current node
     loadNodeData(currentNode);
+    
+    // Load current settings from backend
+    loadCurrentSettings();
 });
+
+// Load current settings from backend and update UI
+async function loadCurrentSettings() {
+    try {
+        const response = await fetch('/status');
+        const status = await response.json();
+        
+        if (status.current_settings) {
+            const settings = status.current_settings;
+            
+            // Update autocommit toggle
+            const autoCommitToggle = document.getElementById('autocommit-toggle');
+            if (autoCommitToggle && settings.auto_commit !== undefined) {
+                autoCommitToggle.checked = settings.auto_commit;
+            }
+            
+            // Update isolation level dropdown
+            const isolationSelect = document.getElementById('isolation-level');
+            if (isolationSelect && settings.isolation_level) {
+                const levelMap = {
+                    'READ UNCOMMITTED': 'read-uncommitted',
+                    'READ COMMITTED': 'read-committed',
+                    'REPEATABLE READ': 'repeatable-read',
+                    'SERIALIZABLE': 'serializable'
+                };
+                isolationSelect.value = levelMap[settings.isolation_level] || 'read-committed';
+            }
+        }
+    } catch (error) {
+        console.error('Error loading current settings:', error);
+    }
+}
