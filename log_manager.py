@@ -215,16 +215,24 @@ class DistributedLogManager:
                 """
                 cursor.execute(query, params)
 
+            # In log_manager.py: Inside _apply_redo_to_main_db
+            # In log_manager.py: Inside _apply_redo_to_main_db
             elif op_type == 'UPDATE':
                 # --- REDO UPDATE ---
-                # Dynamically build SET clause for all updated fields
-                set_clauses = [f"{col} = %s" for col in new_data.keys() if col != 'titleId']
                 
-                # Parameters: values for SET clause, followed by the WHERE clause value (key)
-                params = tuple(new_data[col] for col in new_data.keys() if col != 'titleId') + (key,)
+                # Filter out the primary key (titleId) and build the list of columns to update
+                columns_to_update = [col for col in new_data.keys() if col != 'titleId']
                 
+                # 1. Prepare the SET clause: "column1 = %s, column2 = %s, ..."
+                set_clauses = [f"{col} = %s" for col in columns_to_update] 
+                
+                # 2. Prepare the parameters: (value1, value2, ..., title_id)
+                params = tuple(new_data[col] for col in columns_to_update) + (key,) # 'key' is the titleId from the log
+                
+                # 3. Construct the final query
                 query = f"UPDATE movies SET {', '.join(set_clauses)} WHERE titleId = %s"
                 
+                # Execute the query
                 cursor.execute(query, params)
 
             elif op_type == 'DELETE':
