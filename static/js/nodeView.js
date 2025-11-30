@@ -9,7 +9,17 @@ let currentFilters = {
 
 async function loadNodeData(nodeNumber) {
     currentOffset = 0; // Reset offset when loading new node
-    await fetchMovies();
+    
+    // Clear the table and wait for user input
+    const tableBody = document.getElementById('table-body');
+    tableBody.innerHTML = '<tr><td colspan="9" style="text-align: center; color: #666;"><i>Select a filter and click "Apply Filters" to load data from the distributed network.</i></td></tr>';
+    
+    // Reset counts
+    document.getElementById('current-rows').textContent = '0';
+    document.getElementById('total-rows').textContent = '-';
+    
+    // Hide load more button
+    document.getElementById('load-more-btn').style.display = 'none';
 }
 
 async function fetchMovies() {
@@ -23,7 +33,7 @@ async function fetchMovies() {
             titleId: currentFilters.titleId,
             title: currentFilters.title,
             region: currentFilters.region,
-            node: 'node${activeNode}'
+            node: `node${activeNode}`
         });
 
         // Fetch movies from backend
@@ -307,6 +317,83 @@ async function simulateConcurrency() {
     }
 }
 
+async function generateReport(type) {
+    const activeNode = currentNode || 1;
+
+    // Determine endpoint based on report type
+    const endpoint = type === 1 ? '/report/distribution' : '/report/types';
+    
+    const modal = document.getElementById('report-modal');
+    const content = document.getElementById('report-content');
+    const title = document.getElementById('report-title');
+    
+    if (!modal || !content) {
+        console.error("Report Modal elements not found!");
+        return;
+    }
+
+    // Set loading state
+    content.innerHTML = '<div style="text-align:center; padding: 20px;">Generating report...</div>';
+    title.textContent = type === 1 ? "Report: Regional Distribution" : "Report: Content Types";
+    modal.classList.add('active');
+    
+    try {
+        const response = await fetch(`${endpoint}?node=node${activeNode}`);
+        const result = await response.json();
+        
+        if (result.error) {
+            content.innerHTML = `<div class="error-message">Error: ${result.error}</div>`;
+        } else {
+            // Parse the text report into a nice table
+            const tableHTML = parseReportToTable(result.report);
+            content.innerHTML = tableHTML;
+        }
+        
+    } catch (error) {
+        content.innerHTML = `<div class="error-message">Network Error: ${error}</div>`;
+    }
+}
+
+function parseReportToTable(reportText) {
+    const lines = reportText.split('\n');
+    let html = '<table class="report-table">';
+    
+    lines.forEach((line, index) => {
+        // Skip separator lines (lines containing only dashes or equals)
+        if (line.match(/^[-=]+$/) || line.trim() === '') return;
+        
+        // Check if it's a header or title
+        if (line.startsWith('REPORT:')) {
+            html += `<caption>${line}</caption>`;
+            return;
+        }
+
+        const columns = line.split('|').map(col => col.trim());
+        
+        if (columns.length >= 2) {
+            if (line.includes('REGION') || line.includes('TYPE')) {
+                // Table Header
+                html += '<thead><tr>';
+                columns.forEach(col => html += `<th>${col}</th>`);
+                html += '</tr></thead><tbody>';
+            } else if (line.includes('TOTAL')) {
+                // Total Row
+                html += '<tr class="total-row">';
+                columns.forEach(col => html += `<td><strong>${col}</strong></td>`);
+                html += '</tr>';
+            } else {
+                // Data Row
+                html += '<tr>';
+                columns.forEach(col => html += `<td>${col}</td>`);
+                html += '</tr>';
+            }
+        }
+    });
+    
+    html += '</tbody></table>';
+    return html;
+}
+
 // Close modals when clicking outside - wait for DOM to load
 document.addEventListener('DOMContentLoaded', function() {
     const insertModal = document.getElementById('insert-modal');
@@ -323,6 +410,15 @@ document.addEventListener('DOMContentLoaded', function() {
         editModal.addEventListener('click', function(e) {
             if (e.target === this) {
                 closeEditModal();
+            }
+        });
+    }
+
+    const reportModal = document.getElementById('report-modal');
+    if (reportModal) {
+        reportModal.addEventListener('click', function(e) {
+            if (e.target === this) {
+                reportModal.classList.remove('active');
             }
         });
     }

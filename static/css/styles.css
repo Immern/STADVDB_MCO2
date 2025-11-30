@@ -246,13 +246,26 @@ button:hover {
     background-color: #218838;
 }
 
-/* Concurrency Button */
+/* =======================
+   CONCURRENCY BUTTON
+   ======================= */
 .concurrency-button {
     background-color: #fd7e14;
 }
 
 .concurrency-button:hover {
     background-color: #e8590c;
+}
+
+/* =======================
+   REPORT BUTTONS
+   ======================= */
+.report-button {
+    background-color: #6f42c1;
+}
+
+.report-button:hover {
+    background-color: #5a32a3;
 }
 
 /* =======================
@@ -467,4 +480,75 @@ button:hover {
     .data-table td {
         padding: 6px 8px;
     }
+}
+
+/* =======================
+   REPORT STYLING
+   ======================= */
+
+#report-content {
+    background: white; 
+    padding: 0;
+    border: none;
+    font-family: Arial, sans-serif;
+    white-space: normal; /* Override the pre-wrap */
+}
+
+.report-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.report-table caption {
+    font-size: 1.1em;
+    font-weight: bold;
+    margin-bottom: 15px;
+    color: #555;
+    text-align: left;
+    padding: 10px;
+    background-color: #f8f9fa;
+    border-left: 4px solid #6f42c1;
+}
+
+.report-table th {
+    background-color: #6f42c1; /* Purple theme for reports */
+    color: white;
+    padding: 12px;
+    text-align: left;
+    font-weight: 600;
+}
+
+.report-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #eee;
+    color: #333;
+}
+
+.report-table tr:nth-child(even) {
+    background-color: #f8f9fa;
+}
+
+.report-table tr:hover {
+    background-color: #f1f1f1;
+}
+
+.report-table .total-row {
+    background-color: #e9ecef;
+    font-weight: bold;
+    border-top: 2px solid #6f42c1;
+}
+
+.report-table .total-row td {
+    color: #6f42c1;
+}
+
+.error-message {
+    color: #dc3545;
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    padding: 15px;
+    border-radius: 4px;
+    text-align: center;
 }

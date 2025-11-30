@@ -131,6 +131,8 @@
         <div class="action-buttons">
             <button class="insert-button" onclick="openInsertModal()">+ Insert</button>
             <button class="concurrency-button" onclick="simulateConcurrency()">⚡ Simulate Concurrency</button>
+            <button class="report-button" onclick="generateReport(1)">📄 Report 1: Region</button>
+            <button class="report-button" onclick="generateReport(2)">📄 Report 2: Type</button>
         </div>
 
         <table class="data-table" id="data-table">
@@ -258,6 +260,21 @@
             <div class="modal-footer">
                 <button class="cancel-button" onclick="closeEditModal()">Cancel</button>
                 <button onclick="submitUpdate()">Update</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Report Modal -->
+    <div id="report-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="report-title">Generated Report</h2>
+            </div>
+            <div class="modal-body">
+                <pre id="report-content" style="background: #f4f4f4; padding: 15px; border-radius: 4px; font-family: monospace; white-space: pre-wrap;">Loading...</pre>
+            </div>
+            <div class="modal-footer">
+                <button onclick="document.getElementById('report-modal').classList.remove('active')">Close</button>
             </div>
         </div>
     </div>
