@@ -1,42 +1,52 @@
 let currentNode = null;
 
-function navigateToNode(nodeNumber) {
-    currentNode = nodeNumber;
-    document.getElementById('dashboard-view').style.display = 'none';
-    document.getElementById('node-view').classList.add('active');
-    document.getElementById('current-node-title').textContent = 
-        nodeNumber === 1 ? 'Node 1 (Central)' : `Node ${nodeNumber} (Regional)`;
-    
-    // Load data for the selected node
-    loadNodeData(nodeNumber);
-}
-
-function navigateToDashboard() {
-    document.getElementById('node-view').classList.remove('active');
-    document.getElementById('dashboard-view').style.display = 'block';
-    currentNode = null;
-    
-    // Refresh node status when returning to dashboard
-    loadNodeStatus();
+// Determine the local node from the backend
+async function detectLocalNode() {
+    try {
+        const response = await fetch('/status');
+        const status = await response.json();
+        
+        // Check if backend provides local node information
+        if (status.local_node_id) {
+            currentNode = status.local_node_id;
+        } else {
+            // Default to Node 1 if not specified
+            currentNode = 1;
+        }
+        
+        // Update the page title
+        const nodeTitle = currentNode === 1 ? 'Node 1 (Central)' : `Node ${currentNode} (Regional)`;
+        document.getElementById('current-node-title').textContent = nodeTitle;
+        
+        console.log(`Local Node detected: ${currentNode}`);
+        
+        return currentNode;
+        
+    } catch (error) {
+        console.error('Error detecting local node:', error);
+        currentNode = 1; // Default to Node 1
+        document.getElementById('current-node-title').textContent = 'Node 1 (Central)';
+        return 1;
+    }
 }
 
 function applySettings() {
     const isolationLevel = document.getElementById('isolation-level').value;
     const failureSimulation = document.getElementById('failure-simulation').value;
-    const autoCommit = document.getElementById('auto-commit').value // will require an auto-commit element from the frontend
     
     console.log('Applying settings:', { isolationLevel, failureSimulation });
     
-    // TODO: Send settings to backend
-    // - Apply isolation level to transactions
-    // - Disable/Enable autocommit
-    // - Configure failure simulation scenarios
-    // - Update backend transaction handling
+    // Map frontend values to backend expected format
+    const isolationLevelMap = {
+        'read-uncommitted': 'READ UNCOMMITTED',
+        'read-committed': 'READ COMMITTED',
+        'repeatable-read': 'REPEATABLE READ',
+        'serializable': 'SERIALIZABLE'
+    };
     
     const settingsPayload = {
-        isolationLevel: isolationLevel,
-        failureSimulation: failureSimulation,
-        autoCommit: autoCommit // if implemented
+        isolationLevel: isolationLevelMap[isolationLevel],
+        failureSimulation: failureSimulation
     };
     
     // Send settings to backend
@@ -48,10 +58,14 @@ function applySettings() {
         body: JSON.stringify(settingsPayload),
     })
     .then(response => response.json())
-    .then(data => console.log('Backend response:', data))
-    .catch((error) => console.error('Error sending settings:', error));
-    
-    alert(`Settings applied:\nIsolation Level: ${isolationLevel}\nFailure Simulation: ${failureSimulation}\nAuto Commit: ${autoCommit}`);
+    .then(data => {
+        console.log('Backend response:', data);
+        alert(`Settings applied successfully:\n${data.logs.join('\n')}`);
+    })
+    .catch((error) => {
+        console.error('Error sending settings:', error);
+        alert('Failed to apply settings. Check console for details.');
+    });
 }
 
 // Load node status from backend
@@ -62,17 +76,19 @@ async function loadNodeStatus() {
         
         console.log('Node status:', status);
         
-        // Update each node card with real-time data
-        for (const [nodeKey, nodeData] of Object.entries(status)) {
-            updateNodeCard(nodeKey, nodeData);
-        }
+        // Update each node status card
+        ['node1', 'node2', 'node3'].forEach(nodeKey => {
+            if (status[nodeKey]) {
+                updateNodeStatus(nodeKey, status[nodeKey]);
+            }
+        });
         
     } catch (error) {
         console.error('Error loading node status:', error);
         
         // Show error state for all nodes
         ['node1', 'node2', 'node3'].forEach(nodeKey => {
-            updateNodeCard(nodeKey, {
+            updateNodeStatus(nodeKey, {
                 status: 'ERROR',
                 rows: 0,
                 lastUpdate: 'N/A'
@@ -81,7 +97,7 @@ async function loadNodeStatus() {
     }
 }
 
-function updateNodeCard(nodeKey, nodeData) {
+function updateNodeStatus(nodeKey, nodeData) {
     const statusElement = document.getElementById(`${nodeKey}-status`);
     const rowsElement = document.getElementById(`${nodeKey}-rows`);
     const updateElement = document.getElementById(`${nodeKey}-update`);
@@ -105,24 +121,23 @@ function updateNodeCard(nodeKey, nodeData) {
     }
 }
 
-// TODO: Implement real-time monitoring
-// - Auto-refresh node status every 5-10 seconds
-// - Monitor node health metrics
-// - Display connection status
-// - Show transaction logs
-// - Track replication lag
-// - Alert on node failures
-
-// Auto-refresh node status (optional)
+// Auto-refresh node status
 function startStatusMonitoring() {
     // Initial load
     loadNodeStatus();
     
-    // TODO: Uncomment to enable auto-refresh every 10 seconds
-    // setInterval(loadNodeStatus, 10000);
+    // Auto-refresh every 10 seconds
+    setInterval(loadNodeStatus, 10000);
 }
 
-// Start monitoring when page loads
-document.addEventListener('DOMContentLoaded', function() {
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', async function() {
+    // Detect local node first
+    await detectLocalNode();
+    
+    // Start status monitoring
     startStatusMonitoring();
+    
+    // Load initial data for the current node
+    loadNodeData(currentNode);
 });

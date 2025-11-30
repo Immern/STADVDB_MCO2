@@ -238,10 +238,6 @@ def node_status():
         # Force autocommit = true for connection status check
         conn = get_db_connection(key, autocommit_conn=True)
         if conn:
-            # TODO: Implement real-time status monitoring
-            # - Check node health
-            # - Monitor active connections
-            # - Track transaction logs
             row_count = get_row_count(key)
             last_update = get_last_update(key)
             status_report[key] = {
@@ -256,8 +252,13 @@ def node_status():
                 "rows": 0,
                 "lastUpdate": "N/A"
             }
+    
+    # Add local node information
+    status_report['local_node_id'] = LOCAL_NODE_ID
+    status_report['local_node_key'] = LOCAL_NODE_KEY
     status_report['active_transactions'] = list(ACTIVE_TXN_CONNECTIONS.keys())
     status_report['current_settings'] = GLOBAL_SETTINGS
+    
     return jsonify(status_report)
 
 @app.route('/movies', methods=['GET'])

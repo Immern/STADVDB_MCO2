@@ -3,15 +3,51 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Distributed Database - Dashboard</title>
+    <title>Distributed Database - Node View</title>
 
     <!-- CSS File -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 </head>
 <body>
-    <!-- Dashboard View -->
-    <div id="dashboard-view" class="container">
-        <h1>Distributed Database Dashboard</h1>
+    <!-- Single Unified View -->
+    <div id="main-view" class="container">
+        <h1>Distributed Database - <span id="current-node-title">Loading...</span></h1>
+
+        <!-- Node Status Bar (Non-clickable) -->
+        <div class="status-bar">
+            <div class="status-item">
+                <div class="status-item-header">
+                    <span class="status-item-title">Node 1 (Central)</span>
+                    <span class="status-indicator status-online" id="node1-status">LOADING...</span>
+                </div>
+                <div class="status-item-info">
+                    <span class="status-detail">Rows: <strong id="node1-rows">--</strong></span>
+                    <span class="status-detail">Updated: <span id="node1-update">--</span></span>
+                </div>
+            </div>
+
+            <div class="status-item">
+                <div class="status-item-header">
+                    <span class="status-item-title">Node 2 (Regional)</span>
+                    <span class="status-indicator status-online" id="node2-status">LOADING...</span>
+                </div>
+                <div class="status-item-info">
+                    <span class="status-detail">Rows: <strong id="node2-rows">--</strong></span>
+                    <span class="status-detail">Updated: <span id="node2-update">--</span></span>
+                </div>
+            </div>
+
+            <div class="status-item">
+                <div class="status-item-header">
+                    <span class="status-item-title">Node 3 (Regional)</span>
+                    <span class="status-indicator status-online" id="node3-status">LOADING...</span>
+                </div>
+                <div class="status-item-info">
+                    <span class="status-detail">Rows: <strong id="node3-rows">--</strong></span>
+                    <span class="status-detail">Updated: <span id="node3-update">--</span></span>
+                </div>
+            </div>
+        </div>
 
         <!-- Settings Section -->
         <div class="settings-section">
@@ -37,71 +73,6 @@
             </div>
 
             <button onclick="applySettings()">Apply Settings</button>
-        </div>
-
-        <!-- Nodes Grid -->
-        <div class="nodes-grid">
-            <div class="node-card" onclick="navigateToNode(1)">
-                <div class="node-header">
-                    <div class="node-title">Node 1 (Central)</div>
-                    <span class="status-indicator status-online" id="node1-status">LOADING...</span>
-                </div>
-                <div class="node-info">
-                    <div class="info-row">
-                        <span class="info-label">Last Update:</span>
-                        <span id="node1-update">--</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Rows:</span>
-                        <span id="node1-rows">--</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="node-card" onclick="navigateToNode(2)">
-                <div class="node-header">
-                    <div class="node-title">Node 2 (Regional)</div>
-                    <span class="status-indicator status-online" id="node2-status">LOADING...</span>
-                </div>
-
-                <div class="node-info">
-                    <div class="info-row">
-                        <span class="info-label">Last Update:</span>
-                        <span id="node2-update">--</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Rows:</span>
-                        <span id="node2-rows">--</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="node-card" onclick="navigateToNode(3)">
-                <div class="node-header">
-                    <div class="node-title">Node 3 (Regional)</div>
-                    <span class="status-indicator status-online" id="node3-status">LOADING...</span>
-                </div>
-                <div class="node-info">
-                    <div class="info-row">
-                        <span class="info-label">Last Update:</span>
-                        <span id="node3-update">--</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Rows:</span>
-                        <span id="node3-rows">--</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Node View Template -->
-    <div id="node-view" class="container node-view">
-        <div class="view-header">
-            <div>
-                <button class="back-button" onclick="navigateToDashboard()">← Back</button>
-                <span style="font-size: 24px; font-weight: bold;" id="current-node-title">Node 1</span>
-            </div>
         </div>
 
         <!-- Row Count Display -->

@@ -12,7 +12,7 @@ body {
 }
 
 .container {
-    max-width: 1200px;
+    max-width: 1400px;
     margin: 0 auto;
     background-color: white;
     padding: 30px;
@@ -22,8 +22,79 @@ body {
 
 /* Headings */
 h1 {
-    margin-bottom: 30px;
+    margin-bottom: 25px;
     color: #333;
+    font-size: 28px;
+}
+
+/* =======================
+   STATUS BAR (Non-clickable)
+   ======================= */
+.status-bar {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 15px;
+    margin-bottom: 30px;
+    padding: 20px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    border: 2px solid #e9ecef;
+}
+
+.status-item {
+    padding: 15px;
+    background-color: white;
+    border-radius: 6px;
+    border: 1px solid #dee2e6;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.status-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.status-item-title {
+    font-size: 14px;
+    font-weight: bold;
+    color: #333;
+}
+
+.status-item-info {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.status-detail {
+    font-size: 13px;
+    color: #666;
+}
+
+.status-detail strong {
+    color: #333;
+    font-weight: 600;
+}
+
+.status-indicator {
+    padding: 3px 10px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+.status-online {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.status-offline {
+    background-color: #f8d7da;
+    color: #721c24;
 }
 
 /* =======================
@@ -33,7 +104,7 @@ h1 {
     display: flex;
     gap: 20px;
     align-items: flex-end;
-    margin-bottom: 40px;
+    margin-bottom: 30px;
     padding: 20px;
     background-color: #f9f9f9;
     border-radius: 4px;
@@ -88,109 +159,6 @@ button:hover {
     background-color: #5a6268;
 }
 
-/* =======================
-   NODES GRID (Dashboard)
-   ======================= */
-
-.nodes-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 20px;
-}
-
-.node-card {
-    border: 2px solid #ddd;
-    border-radius: 8px;
-    padding: 20px;
-    cursor: pointer;
-    transition: all 0.3s;
-    background-color: white;
-}
-
-.node-card:hover {
-    border-color: #007bff;
-    box-shadow: 0 4px 12px rgba(0,123,255,0.2);
-    transform: translateY(-2px);
-}
-
-.node-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 15px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid #eee;
-}
-
-.node-title {
-    font-size: 18px;
-    font-weight: bold;
-    color: #333;
-}
-
-.status-indicator {
-    padding: 4px 12px;
-    border-radius: 12px;
-    font-size: 12px;
-    font-weight: bold;
-}
-
-.status-online {
-    background-color: #d4edda;
-    color: #155724;
-}
-
-.status-offline {
-    background-color: #f8d7da;
-    color: #721c24;
-}
-
-.node-info {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.info-row {
-    display: flex;
-    justify-content: space-between;
-    font-size: 14px;
-    color: #666;
-}
-
-.info-label {
-    font-weight: bold;
-    color: #333;
-}
-
-/* =======================
-   NODE VIEW PAGE
-   ======================= */
-
-.node-view {
-    display: none;
-}
-
-.node-view.active {
-    display: block;
-}
-
-.view-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-}
-
-.back-button {
-    background-color: #6c757d;
-    margin-right: 10px;
-}
-
-.back-button:hover {
-    background-color: #5a6268;
-}
-
 /* Row Count Display */
 .row-count-display {
     background-color: #e7f3ff;
@@ -233,11 +201,10 @@ button:hover {
     display: flex;
     gap: 10px;
     margin-bottom: 20px;
+    flex-wrap: wrap;
 }
 
-/* =======================
-   INSERT BUTTON
-   ======================= */
+/* Insert Button */
 .insert-button {
     background-color: #28a745;
 }
@@ -246,9 +213,7 @@ button:hover {
     background-color: #218838;
 }
 
-/* =======================
-   CONCURRENCY BUTTON
-   ======================= */
+/* Concurrency Button */
 .concurrency-button {
     background-color: #fd7e14;
 }
@@ -257,9 +222,7 @@ button:hover {
     background-color: #e8590c;
 }
 
-/* =======================
-   REPORT BUTTONS
-   ======================= */
+/* Report Buttons */
 .report-button {
     background-color: #6f42c1;
 }
@@ -271,21 +234,12 @@ button:hover {
 /* =======================
    TABLE STYLING
    ======================= */
-
-/* Wrap table for scrolling */
-.table-container {
-    overflow-x: auto;
-    margin-top: 20px;
-}
-
-/* Actual table */
 .data-table {
     width: 100%;
     border-collapse: collapse;
     table-layout: fixed;
 }
 
-/* Cells */
 .data-table th,
 .data-table td {
     padding: 8px 10px;
@@ -297,7 +251,6 @@ button:hover {
     text-align: left;
 }
 
-/* Header */
 .data-table th {
     background-color: #f8f9fa;
     color: #333;
@@ -307,12 +260,10 @@ button:hover {
     z-index: 10;
 }
 
-/* Hover */
 .data-table tbody tr:hover {
     background-color: #f5f5f5;
 }
 
-/* Action buttons in table */
 .data-table button {
     padding: 5px 10px;
     font-size: 12px;
@@ -338,7 +289,6 @@ button:hover {
 /* =======================
    MODAL
    ======================= */
-
 .modal {
     display: none;
     position: fixed;
@@ -448,50 +398,14 @@ button:hover {
 }
 
 /* =======================
-   RESPONSIVE DESIGN
-   ======================= */
-@media (max-width: 768px) {
-    .settings-section {
-        flex-direction: column;
-        align-items: stretch;
-    }
-    
-    .form-row {
-        grid-template-columns: 1fr;
-    }
-    
-    .nodes-grid {
-        grid-template-columns: 1fr;
-    }
-    
-    .filter-section {
-        flex-direction: column;
-    }
-    
-    .action-buttons {
-        flex-direction: column;
-    }
-    
-    .data-table {
-        font-size: 12px;
-    }
-    
-    .data-table th,
-    .data-table td {
-        padding: 6px 8px;
-    }
-}
-
-/* =======================
    REPORT STYLING
    ======================= */
-
 #report-content {
     background: white; 
     padding: 0;
     border: none;
     font-family: Arial, sans-serif;
-    white-space: normal; /* Override the pre-wrap */
+    white-space: normal;
 }
 
 .report-table {
@@ -513,7 +427,7 @@ button:hover {
 }
 
 .report-table th {
-    background-color: #6f42c1; /* Purple theme for reports */
+    background-color: #6f42c1;
     color: white;
     padding: 12px;
     text-align: left;
@@ -551,4 +465,41 @@ button:hover {
     padding: 15px;
     border-radius: 4px;
     text-align: center;
+}
+
+/* =======================
+   RESPONSIVE DESIGN
+   ======================= */
+@media (max-width: 992px) {
+    .status-bar {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .settings-section {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+    
+    .filter-section {
+        flex-direction: column;
+    }
+    
+    .action-buttons {
+        flex-direction: column;
+    }
+    
+    .data-table {
+        font-size: 12px;
+    }
+    
+    .data-table th,
+    .data-table td {
+        padding: 6px 8px;
+    }
 }
