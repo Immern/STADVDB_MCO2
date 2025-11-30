@@ -87,17 +87,7 @@ class DistributedLogManager:
 
     # --- Step 3: Global Failure Recovery Logic (Handles Case #2 and #4) ---
 
-    def recover_missed_writes(self, last_known_commit_time):
-        missed_logs = self._simulate_fetch_missed_logs(last_known_commit_time)
 
-        for log in missed_logs:
-            print(f"   -> REDO: Applying missed {log['operation_type']} for record {log['record_key']}...")
-            
-            # --- CALLING THE NEW REDO HELPER ---
-            if self._apply_redo_to_main_db(log):
-                print("      -> Successfully applied. Must acknowledge back to Node 1.")
-            
-        print(f"--- Recovery for Node {self.node_id} Complete ---")
 
     def log_prepare_start(self, txn_id):
         """Logs the coordinator's initiation of the 2PC protocol (Phase 1)."""
@@ -158,27 +148,7 @@ class DistributedLogManager:
 
     # NOTE: The original log_local_commit is now redundant and should be removed. 
     # The replication-related methods can stay as they track the commit outcome.
-            
-    def _simulate_fetch_missed_logs(self, last_time):
-        """
-        Placeholder: In a real distributed system, this would be a network call
-        to the Central Node (Node 1) or other active Fabric Nodes (Node 2/3).
-        
-        For simulation, you will likely query the log table of the active node(s).
-        """
-        # For simplicity in the example, we'll return a sample missed log entry
-        if self.node_id in [2, 3]:
-            # Simulate a missed log that was committed on Node 1 while Node 2/3 was down
-            return [{
-                'transaction_id': str(uuid.uuid4()),
-                'operation_type': 'UPDATE',
-                'record_key': 'A101',
-                'new_value': json.dumps({"column": "value_after_recovery"}),
-                'status': 'LOCAL_COMMIT',
-                'log_timestamp': datetime.now()
-            }]
-        return []
-    
+
     def _apply_redo_to_main_db(self, log_entry):
         """
         Applies the 'After Image' (new_value) from a log entry to the main 

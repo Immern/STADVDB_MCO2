@@ -141,6 +141,7 @@ def scheduled_recovery():
     Function executed by the scheduler every 15 seconds.
     It attempts to run the recovery logic using a simulated timestamp.
     """
+    
     if not LOG_MANAGER:
         print("Scheduler: LOG_MANAGER not initialized. Skipping recovery run.")
         return
@@ -160,22 +161,25 @@ def scheduled_recovery():
     
     print(f"\n[SCHEDULER] Node {LOG_MANAGER.node_id} Auto-Recovery starting from {last_known_commit_time}...")
     
+    import requests 
+    recovery_url = f"http://127.0.0.1:80/recover"
+    
     try:
-        # Re-establish the connection in case it was closed
-        if not LOG_MANAGER.db_conn or not LOG_MANAGER.db_conn.is_connected():
-            LOG_MANAGER.db_conn = get_db_connection(LOCAL_NODE_KEY)
-            
-        if not LOG_MANAGER.db_conn:
-            print(f"FATAL: Could not re-establish DB connection to {LOCAL_NODE_KEY}. Skipping REDO.")
-            return
-
-        # Run the core recovery logic (REDO missed transactions)
-        LOG_MANAGER.recover_missed_writes(last_known_commit_time)
+        # Send a POST request to the local /recover endpoint
+        response = requests.post(recovery_url, json={})
         
-        print(f"[SCHEDULER] Auto-Recovery sequence for Node {LOG_MANAGER.node_id} completed successfully.")
-
-    except Exception as e:
-        print(f"[SCHEDULER] An unexpected error occurred during recovery: {str(e)}")
+        if response.status_code == 200:
+            print(f"[SCHEDULER] Auto-Recovery successfully triggered local endpoint.")
+        else:
+            print(f"[SCHEDULER] Auto-Recovery endpoint returned status: {response.status_code}")
+            print(f"Details: {response.json().get('error', 'No details available')}")
+            
+    except requests.exceptions.ConnectionError:
+        # This occurs if the Flask app is running but the network access is blocked, 
+        # or if the app is still starting up/reloading.
+        print(f"[SCHEDULER] ERROR: Could not connect to local /recover endpoint. Check network/startup.")
+        
+    print(f"[SCHEDULER] Auto-Recovery sequence for Node {LOG_MANAGER.node_id} finished.")
 
 def _fetch_logs_from_active_node(source_node_key, target_node_key, txn_id=None):
     """
