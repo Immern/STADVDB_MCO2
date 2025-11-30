@@ -103,7 +103,9 @@
         <!-- Action Buttons -->
         <div class="action-buttons">
             <button class="insert-button" onclick="openInsertModal()">+ Insert</button>
-            <button class="concurrency-button" onclick="simulateConcurrency()">⚡ Simulate Concurrency</button>
+            <button class="commit-button" id="commit-changes-btn" onclick="openCommitModal()" disabled>
+                💾 Commit Changes
+            </button>
             <button class="report-button" onclick="generateReport(1)">📄 Report 1: Region</button>
             <button class="report-button" onclick="generateReport(2)">📄 Report 2: Type</button>
         </div>
@@ -248,6 +250,30 @@
             </div>
             <div class="modal-footer">
                 <button onclick="document.getElementById('report-modal').classList.remove('active')">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Commit Changes Modal -->
+    <div id="commit-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Pending Transactions - Manual Commit/Rollback</h2>
+            </div>
+            <div class="modal-body">
+                <p style="color: #666; margin-bottom: 15px;">
+                    The following transactions are pending and require manual resolution. 
+                    Choose to <strong>COMMIT</strong> (apply changes) or <strong>ROLLBACK</strong> (discard changes) for each transaction.
+                </p>
+                <div id="pending-transactions-list">
+                    <div style="text-align: center; padding: 20px; color: #666;">
+                        Loading pending transactions...
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="secondary-button" onclick="closeCommitModal()">Close</button>
+                <button onclick="refreshPendingTransactions()">🔄 Refresh</button>
             </div>
         </div>
     </div>

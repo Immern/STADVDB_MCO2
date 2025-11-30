@@ -62,12 +62,61 @@ function applySettings() {
         console.log('Backend response:', data);
         const mode = autoCommitToggle ? 'Auto Commit' : 'Manual 2PC';
         alert(`Settings applied successfully!\n\nIsolation Level: ${isolationLevelMap[isolationLevel]}\nTransaction Mode: ${mode}\n\n${data.logs ? data.logs.join('\n') : ''}`);
+        
+        // Update commit button state
+        updateCommitButtonState();
     })
     .catch((error) => {
         console.error('Error sending settings:', error);
         alert('Failed to apply settings. Check console for details.');
     });
 }
+
+// Update the state of the Commit Changes button based on autocommit toggle
+function updateCommitButtonState() {
+    const autoCommitToggle = document.getElementById('autocommit-toggle');
+    const commitButton = document.getElementById('commit-changes-btn');
+    
+    if (autoCommitToggle && commitButton) {
+        if (autoCommitToggle.checked) {
+            // Auto Commit ON: Disable button
+            commitButton.disabled = true;
+            commitButton.style.opacity = '0.5';
+            commitButton.style.cursor = 'not-allowed';
+            commitButton.title = 'Disabled in Auto Commit mode';
+        } else {
+            // Manual 2PC Mode: Enable button
+            commitButton.disabled = false;
+            commitButton.style.opacity = '1';
+            commitButton.style.cursor = 'pointer';
+            commitButton.title = 'View and resolve pending transactions';
+        }
+    }
+}
+
+// Add event listener to toggle for real-time button state update
+document.addEventListener('DOMContentLoaded', async function() {
+    // Detect local node first
+    await detectLocalNode();
+    
+    // Start status monitoring
+    startStatusMonitoring();
+    
+    // Load initial data for the current node
+    loadNodeData(currentNode);
+    
+    // Load current settings from backend
+    await loadCurrentSettings();
+    
+    // Set up toggle event listener
+    const autoCommitToggle = document.getElementById('autocommit-toggle');
+    if (autoCommitToggle) {
+        autoCommitToggle.addEventListener('change', updateCommitButtonState);
+    }
+    
+    // Initial button state update
+    updateCommitButtonState();
+});
 
 // Load node status from backend
 async function loadNodeStatus() {
